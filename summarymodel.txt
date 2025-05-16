@@ -1,0 +1,149 @@
+# Database Models Summary
+
+## Core Models
+
+### 1. User
+- username: String (required, unique, min: 3)
+- passwordHash: String (required)
+- fullName: String (required)
+- role: String (enum: ['superadmin', 'admin', 'mandor', 'supervisor', 'user'])
+- email: String (required, unique, email format)
+- phone: String (10-13 digits)
+- isActive: Boolean (default: true)
+- lastLogin: Date
+- timestamps: createdAt, updatedAt
+
+### 2. SPK (Surat Perintah Kerja)
+- spkNo: String (required, unique)
+- wapNo: String (required)
+- title: String (required)
+- projectName: String (required)
+- date: Date (required)
+- contractor: String (required)
+- workDescription: String (required)
+- location: ObjectId (ref: 'Area')
+- startDate: Date
+- endDate: Date
+- budget: Number (required)
+- workItems: Array of {
+  - workItemId: ObjectId (ref: 'WorkItem', required)
+  - boqVolume: Number
+  - amount: Number
+  - unitRate: Number
+  - description: String
+}
+- timestamps: createdAt, updatedAt
+
+### 3. WorkItem
+- name: String (required)
+- categoryId: ObjectId (ref: 'Category')
+- subCategoryId: ObjectId (ref: 'SubCategory')
+- unitId: ObjectId (ref: 'Unit')
+- description: String
+- timestamps: createdAt, updatedAt
+
+## Equipment & Resources
+
+### 4. Equipment
+- equipmentCode: String (required)
+- plateOrSerialNo: String
+- equipmentType: String (required)
+- defaultOperator: String
+- area: String
+- fuelType: String
+- year: Number
+- serviceStatus: String (enum: ['Active', 'Maintenance', 'Decommissioned'])
+- contracts: Array of {
+  - contractId: ObjectId (ref: 'Contract')
+  - equipmentId: Number
+  - rentalRate: Number
+}
+- description: String
+- timestamps: createdAt, updatedAt
+
+### 5. Material
+- name: String (required)
+- unitId: ObjectId (ref: 'Unit')
+- description: String
+- timestamps: createdAt, updatedAt
+
+## Classification Models
+
+### 6. Category
+- name: String (required)
+- description: String
+- timestamps: createdAt, updatedAt
+
+### 7. SubCategory
+- name: String (required)
+- categoryId: ObjectId (ref: 'Category')
+- description: String
+- timestamps: createdAt, updatedAt
+
+### 8. Unit
+- name: String (required)
+- symbol: String
+- description: String
+- timestamps: createdAt, updatedAt
+
+### 9. PersonnelRole
+- name: String (required)
+- description: String
+- timestamps: createdAt, updatedAt
+
+### 10. Area
+- name: String (required)
+- code: String
+- description: String
+- parentId: ObjectId (ref: 'Area')
+- timestamps: createdAt, updatedAt
+
+## Pricing & Logs
+
+### 11. FuelPrice
+- type: String (required)
+- price: Number (required)
+- date: Date (required)
+- timestamps: createdAt, updatedAt
+
+### 12. DailyActivity
+- date: Date (required)
+- workItemId: ObjectId (ref: 'WorkItem')
+- spkId: ObjectId (ref: 'SPK')
+- description: String
+- timestamps: createdAt, updatedAt
+
+### 13. ActivityDetail
+- dailyActivityId: ObjectId (ref: 'DailyActivity')
+- materialId: ObjectId (ref: 'Material')
+- quantity: Number
+- unitId: ObjectId (ref: 'Unit')
+- description: String
+- timestamps: createdAt, updatedAt
+
+### 14. ProgressLog
+- workItemId: ObjectId (ref: 'WorkItem')
+- spkId: ObjectId (ref: 'SPK')
+- progress: Number
+- date: Date
+- description: String
+- timestamps: createdAt, updatedAt
+
+### 15. EquipmentLog
+- equipmentId: ObjectId (ref: 'Equipment')
+- date: Date
+- hours: Number
+- fuelConsumption: Number
+- description: String
+- timestamps: createdAt, updatedAt
+
+### 16. ManpowerLog
+- personnelRoleId: ObjectId (ref: 'PersonnelRole')
+- date: Date
+- hours: Number
+- description: String
+- timestamps: createdAt, updatedAt
+
+---
+Note: All models include timestamps (createdAt and updatedAt) by default unless specified otherwise. 
+ObjectId references are MongoDB ObjectId types that create relationships between models.

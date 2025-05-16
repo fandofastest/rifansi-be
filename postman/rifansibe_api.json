@@ -1,0 +1,476 @@
+{
+  "info": {
+    "name": "Rifansibe API",
+    "description": "API collection for Rifansibe Construction Management System",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"mutation Register($username: String!, $password: String!, $fullName: String!, $role: String!, $email: String!, $phone: String) {\\n    register(username: $username, password: $password, fullName: $fullName, role: $role, email: $email, phone: $phone) {\\n      token\\n      user {\\n        id\\n        username\\n        fullName\\n        role\\n        email\\n        phone\\n      }\\n    }\\n  }\",\n  \"variables\": {\n    \"username\": \"testuser\",\n    \"password\": \"password123\",\n    \"fullName\": \"Test User\",\n    \"role\": \"user\",\n    \"email\": \"test@example.com\",\n    \"phone\": \"081234567890\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": ["{{baseUrl}}"],
+              "path": ["graphql"]
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"mutation Login($username: String!, $password: String!) {\\n    login(username: $username, password: $password) {\\n      token\\n      user {\\n        id\\n        username\\n        fullName\\n        role\\n        email\\n        phone\\n      }\\n    }\\n  }\",\n  \"variables\": {\n    \"username\": \"testuser\",\n    \"password\": \"password123\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": ["{{baseUrl}}"],
+              "path": ["graphql"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "User Management",
+      "item": [
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query {\\n    me {\\n      id\\n      username\\n      fullName\\n      role\\n      email\\n      phone\\n      createdAt\\n      updatedAt\\n    }\\n  }\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": ["{{baseUrl}}"],
+              "path": ["graphql"]
+            }
+          }
+        },
+        {
+          "name": "Get All Users",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query {\\n    users {\\n      id\\n      username\\n      fullName\\n      role\\n      email\\n      phone\\n      createdAt\\n      updatedAt\\n    }\\n  }\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": ["{{baseUrl}}"],
+              "path": ["graphql"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SPK Management",
+      "item": [
+        {
+          "name": "Create SPK",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"mutation CreateSPK($input: CreateSPKInput!) {\\n    createSPK(input: $input) {\\n      id\\n      spkNo\\n      wapNo\\n      title\\n      projectName\\n      date\\n      contractor\\n      workDescription\\n      location {\\n        id\\n        name\\n      }\\n      startDate\\n      endDate\\n      budget\\n      createdAt\\n      updatedAt\\n    }\\n  }\",\n  \"variables\": {\n    \"input\": {\n      \"spkNo\": \"SPK-001\",\n      \"wapNo\": \"WAP-001\",\n      \"title\": \"Test SPK\",\n      \"projectName\": \"Test Project\",\n      \"date\": \"2024-03-20\",\n      \"contractor\": \"Test Contractor\",\n      \"workDescription\": \"Test Description\",\n      \"location\": \"{{locationId}}\",\n      \"startDate\": \"2024-03-21\",\n      \"endDate\": \"2024-04-21\",\n      \"budget\": 1000000\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": ["{{baseUrl}}"],
+              "path": ["graphql"]
+            }
+          }
+        },
+        {
+          "name": "Get All SPKs",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query GetSPKs($startDate: String, $endDate: String, $locationId: ID) {\\n    spks(startDate: $startDate, endDate: $endDate, locationId: $locationId) {\\n      id\\n      spkNo\\n      wapNo\\n      title\\n      projectName\\n      date\\n      contractor\\n      workDescription\\n      location {\\n        id\\n        name\\n      }\\n      startDate\\n      endDate\\n      budget\\n      workItems {\\n        workItemId\\n        boqVolume\\n        amount\\n        unitRate\\n        description\\n        workItem {\\n          id\\n          name\\n          category {\\n            id\\n            name\\n          }\\n          subCategory {\\n            id\\n            name\\n          }\\n          unit {\\n            id\\n            name\\n          }\\n        }\\n      }\\n      createdAt\\n      updatedAt\\n    }\\n  }\",\n  \"variables\": {\n    \"startDate\": \"2024-01-01\",\n    \"endDate\": \"2024-12-31\",\n    \"locationId\": \"{{locationId}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": ["{{baseUrl}}"],
+              "path": ["graphql"]
+            }
+          }
+        },
+        {
+          "name": "Add Work Item to SPK",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"mutation AddWorkItemToSPK($spkId: ID!, $input: AddWorkItemInput!) {\\n    addWorkItemToSPK(spkId: $spkId, input: $input) {\\n      id\\n      workItems {\\n        workItemId\\n        boqVolume\\n        amount\\n        unitRate\\n        description\\n        workItem {\\n          id\\n          name\\n        }\\n      }\\n    }\\n  }\",\n  \"variables\": {\n    \"spkId\": \"{{spkId}}\",\n    \"input\": {\n      \"workItemId\": \"{{workItemId}}\",\n      \"boqVolume\": 100,\n      \"amount\": 1000000,\n      \"unitRate\": 10000,\n      \"description\": \"Test work item in SPK\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": ["{{baseUrl}}"],
+              "path": ["graphql"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Work Item Management",
+      "item": [
+        {
+          "name": "Create Work Item",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"mutation CreateWorkItem($input: CreateWorkItemInput!) {\\n    createWorkItem(input: $input) {\\n      id\\n      name\\n      categoryId\\n      subCategoryId\\n      unitId\\n      description\\n      category {\\n        id\\n        name\\n      }\\n      subCategory {\\n        id\\n        name\\n      }\\n      unit {\\n        id\\n        name\\n      }\\n      createdAt\\n      updatedAt\\n    }\\n  }\",\n  \"variables\": {\n    \"input\": {\n      \"name\": \"Test Work Item\",\n      \"categoryId\": \"{{categoryId}}\",\n      \"subCategoryId\": \"{{subCategoryId}}\",\n      \"unitId\": \"{{unitId}}\",\n      \"description\": \"Test description\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": ["{{baseUrl}}"],
+              "path": ["graphql"]
+            }
+          }
+        },
+        {
+          "name": "Get All Work Items",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query {\\n    workItems {\\n      id\\n      name\\n      category {\\n        id\\n        name\\n      }\\n      subCategory {\\n        id\\n        name\\n      }\\n      unit {\\n        id\\n        name\\n      }\\n      description\\n      createdAt\\n      updatedAt\\n    }\\n  }\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": ["{{baseUrl}}"],
+              "path": ["graphql"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Category Management",
+      "item": [
+        {
+          "name": "Create Category",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"mutation CreateCategory($code: String!, $name: String!, $description: String) {\\n    createCategory(code: $code, name: $name, description: $description) {\\n      id\\n      code\\n      name\\n      description\\n      createdAt\\n      updatedAt\\n    }\\n  }\",\n  \"variables\": {\n    \"code\": \"CAT-001\",\n    \"name\": \"Test Category\",\n    \"description\": \"Test description\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": ["{{baseUrl}}"],
+              "path": ["graphql"]
+            }
+          }
+        },
+        {
+          "name": "Get All Categories",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query {\\n    categories {\\n      id\\n      code\\n      name\\n      description\\n      subCategories {\\n        id\\n        name\\n      }\\n      createdAt\\n      updatedAt\\n    }\\n  }\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": ["{{baseUrl}}"],
+              "path": ["graphql"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SubCategory Management",
+      "item": [
+        {
+          "name": "Create SubCategory",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"mutation CreateSubCategory($categoryId: ID!, $name: String!, $description: String) {\\n    createSubCategory(categoryId: $categoryId, name: $name, description: $description) {\\n      id\\n      categoryId\\n      name\\n      description\\n      category {\\n        id\\n        name\\n      }\\n      createdAt\\n      updatedAt\\n    }\\n  }\",\n  \"variables\": {\n    \"categoryId\": \"{{categoryId}}\",\n    \"name\": \"Test SubCategory\",\n    \"description\": \"Test description\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": ["{{baseUrl}}"],
+              "path": ["graphql"]
+            }
+          }
+        },
+        {
+          "name": "Get SubCategories by Category",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query GetSubCategoriesByCategory($categoryId: ID!) {\\n    subCategoriesByCategory(categoryId: $categoryId) {\\n      id\\n      categoryId\\n      name\\n      description\\n      category {\\n        id\\n        name\\n      }\\n      createdAt\\n      updatedAt\\n    }\\n  }\",\n  \"variables\": {\n    \"categoryId\": \"{{categoryId}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": ["{{baseUrl}}"],
+              "path": ["graphql"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Unit Management",
+      "item": [
+        {
+          "name": "Create Unit",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"mutation CreateUnit($code: String!, $name: String!, $description: String) {\\n    createUnit(code: $code, name: $name, description: $description) {\\n      id\\n      code\\n      name\\n      description\\n    }\\n  }\",\n  \"variables\": {\n    \"code\": \"UNT-001\",\n    \"name\": \"Test Unit\",\n    \"description\": \"Test description\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": ["{{baseUrl}}"],
+              "path": ["graphql"]
+            }
+          }
+        },
+        {
+          "name": "Get All Units",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query {\\n    units {\\n      id\\n      code\\n      name\\n      description\\n    }\\n  }\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": ["{{baseUrl}}"],
+              "path": ["graphql"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Area Management",
+      "item": [
+        {
+          "name": "Create Area",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"mutation CreateArea($name: String!, $latitude: Float!, $longitude: Float!) {\\n    createArea(name: $name, latitude: $latitude, longitude: $longitude) {\\n      id\\n      name\\n      location {\\n        type\\n        coordinates\\n      }\\n      createdAt\\n      updatedAt\\n    }\\n  }\",\n  \"variables\": {\n    \"name\": \"Test Area\",\n    \"latitude\": -6.2088,\n    \"longitude\": 106.8456\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": ["{{baseUrl}}"],
+              "path": ["graphql"]
+            }
+          }
+        },
+        {
+          "name": "Get All Areas",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query {\\n    areas {\\n      id\\n      name\\n      location {\\n        type\\n        coordinates\\n      }\\n      createdAt\\n      updatedAt\\n    }\\n  }\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": ["{{baseUrl}}"],
+              "path": ["graphql"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "token",
+      "value": "your-jwt-token-here"
+    }
+  ]
+} 

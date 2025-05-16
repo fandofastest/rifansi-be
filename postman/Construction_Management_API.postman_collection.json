@@ -1,0 +1,690 @@
+{
+  "info": {
+    "name": "Construction Management API",
+    "description": "GraphQL API for Construction Management System",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register Superadmin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-apollo-operation-name",
+                "value": "Register",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"query\":\"mutation Register($username: String!, $password: String!, $fullName: String!, $role: String!) {\\n  register(username: $username, password: $password, fullName: $fullName, role: $role) {\\n    token\\n    user {\\n      id\\n      username\\n      fullName\\n      role\\n    }\\n  }\\n}\",\"variables\":{\"username\":\"superadmin\",\"password\":\"superadmin123\",\"fullName\":\"Super Admin\",\"role\":\"superadmin\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/graphql",
+              "host": ["{{base_url}}"],
+              "path": ["graphql"]
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "x-apollo-operation-name",
+                "value": "Login",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"query\":\"mutation Login($username: String!, $password: String!) {\\n  login(username: $username, password: $password) {\\n    token\\n    user {\\n      id\\n      username\\n      fullName\\n      role\\n    }\\n  }\\n}\",\"variables\":{\"username\":\"{{superadmin_username}}\",\"password\":\"{{superadmin_password}}\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/graphql",
+              "host": ["{{base_url}}"],
+              "path": ["graphql"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "User",
+      "item": [
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"query\":\"query {\\n  me {\\n    id\\n    username\\n    fullName\\n    role\\n    email\\n    phone\\n  }\\n}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/graphql",
+              "host": ["{{base_url}}"],
+              "path": ["graphql"]
+            }
+          }
+        },
+        {
+          "name": "Get All Users",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"query\":\"query {\\n  users {\\n    id\\n    username\\n    fullName\\n    role\\n    email\\n    phone\\n  }\\n}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/graphql",
+              "host": ["{{base_url}}"],
+              "path": ["graphql"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Category",
+      "item": [
+        {
+          "name": "Create Category",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"query\":\"mutation CreateCategory($code: String!, $name: String!, $description: String) {\\n  createCategory(code: $code, name: $name, description: $description) {\\n    id\\n    code\\n    name\\n    description\\n  }\\n}\",\"variables\":{\"code\":\"CAT001\",\"name\":\"Civil Work\",\"description\":\"Civil construction work\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/graphql",
+              "host": ["{{base_url}}"],
+              "path": ["graphql"]
+            }
+          }
+        },
+        {
+          "name": "Get All Categories",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"query\":\"query {\\n  categories {\\n    id\\n    code\\n    name\\n    description\\n  }\\n}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/graphql",
+              "host": ["{{base_url}}"],
+              "path": ["graphql"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SubCategory",
+      "item": [
+        {
+          "name": "Create SubCategory",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"query\":\"mutation CreateSubCategory($categoryId: ID!, $name: String!, $description: String) {\\n  createSubCategory(categoryId: $categoryId, name: $name, description: $description) {\\n    id\\n    categoryId\\n    name\\n    description\\n  }\\n}\",\"variables\":{\"categoryId\":\"{{category_id}}\",\"name\":\"Foundation Work\",\"description\":\"Foundation construction work\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/graphql",
+              "host": ["{{base_url}}"],
+              "path": ["graphql"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Unit",
+      "item": [
+        {
+          "name": "Create Unit",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"query\":\"mutation CreateUnit($code: String!, $name: String!, $description: String) {\\n  createUnit(code: $code, name: $name, description: $description) {\\n    id\\n    code\\n    name\\n    description\\n  }\\n}\",\"variables\":{\"code\":\"M3\",\"name\":\"Cubic Meter\",\"description\":\"Volume measurement unit\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/graphql",
+              "host": ["{{base_url}}"],
+              "path": ["graphql"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Material",
+      "item": [
+        {
+          "name": "Create Material",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"query\":\"mutation CreateMaterial($name: String!, $unitId: ID!, $unitRate: Float!, $description: String) {\\n  createMaterial(name: $name, unitId: $unitId, unitRate: $unitRate, description: $description) {\\n    id\\n    name\\n    unitId\\n    unitRate\\n    description\\n  }\\n}\",\"variables\":{\"name\":\"Concrete\",\"unitId\":\"{{unit_id}}\",\"unitRate\":1000000,\"description\":\"Ready mix concrete\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/graphql",
+              "host": ["{{base_url}}"],
+              "path": ["graphql"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Equipment",
+      "item": [
+        {
+          "name": "Create Equipment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"query\":\"mutation CreateEquipment($name: String!, $type: String!, $capacity: Float!, $unit: String!, $fuelConsumption: Float!, $maintenanceCost: Float!) {\\n  createEquipment(name: $name, type: $type, capacity: $capacity, unit: $unit, fuelConsumption: $fuelConsumption, maintenanceCost: $maintenanceCost) {\\n    id\\n    name\\n    type\\n    capacity\\n    unit\\n    fuelConsumption\\n    maintenanceCost\\n  }\\n}\",\"variables\":{\"name\":\"Excavator\",\"type\":\"Heavy Equipment\",\"capacity\":1.5,\"unit\":\"M3\",\"fuelConsumption\":20,\"maintenanceCost\":500000}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/graphql",
+              "host": ["{{base_url}}"],
+              "path": ["graphql"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SPK",
+      "item": [
+        {
+          "name": "Create SPK",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"query\":\"mutation CreateSPK($number: String!, $date: String!, $contractor: String!, $workDescription: String!, $location: String!, $startDate: String!, $endDate: String!, $budget: Float!) {\\n  createSPK(number: $number, date: $date, contractor: $contractor, workDescription: $workDescription, location: $location, startDate: $startDate, endDate: $endDate, budget: $budget) {\\n    id\\n    number\\n    date\\n    contractor\\n    workDescription\\n    location\\n    startDate\\n    endDate\\n    budget\\n  }\\n}\",\"variables\":{\"number\":\"SPK001\",\"date\":\"2024-03-01\",\"contractor\":\"PT. ABC\",\"workDescription\":\"Foundation Work\",\"location\":\"Site A\",\"startDate\":\"2024-03-01\",\"endDate\":\"2024-03-31\",\"budget\":100000000}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/graphql",
+              "host": ["{{base_url}}"],
+              "path": ["graphql"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "WorkItem",
+      "item": [
+        {
+          "name": "Create WorkItem",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"query\":\"mutation CreateWorkItem($spkId: ID!, $subCategoryId: ID!, $description: String!, $quantity: Float!, $unit: String!, $unitRate: Float!) {\\n  createWorkItem(spkId: $spkId, subCategoryId: $subCategoryId, description: $description, quantity: $quantity, unit: $unit, unitRate: $unitRate) {\\n    id\\n    spkId\\n    subCategoryId\\n    description\\n    quantity\\n    unit\\n    unitRate\\n  }\\n}\",\"variables\":{\"spkId\":\"{{spk_id}}\",\"subCategoryId\":\"{{subcategory_id}}\",\"description\":\"Concrete Foundation\",\"quantity\":100,\"unit\":\"M3\",\"unitRate\":1000000}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/graphql",
+              "host": ["{{base_url}}"],
+              "path": ["graphql"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "DailyActivity",
+      "item": [
+        {
+          "name": "Create DailyActivity",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"query\":\"mutation CreateDailyActivity($date: String!, $workItemId: ID!, $weather: String!, $notes: String) {\\n  createDailyActivity(date: $date, workItemId: $workItemId, weather: $weather, notes: $notes) {\\n    id\\n    date\\n    workItemId\\n    weather\\n    notes\\n  }\\n}\",\"variables\":{\"date\":\"2024-03-01\",\"workItemId\":\"{{workitem_id}}\",\"weather\":\"Sunny\",\"notes\":\"Good progress\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/graphql",
+              "host": ["{{base_url}}"],
+              "path": ["graphql"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "ActivityDetail",
+      "item": [
+        {
+          "name": "Create ActivityDetail",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"query\":\"mutation CreateActivityDetail($dailyActivityId: ID!, $description: String!, $startTime: String!, $endTime: String!, $progress: Float!) {\\n  createActivityDetail(dailyActivityId: $dailyActivityId, description: $description, startTime: $startTime, endTime: $endTime, progress: $progress) {\\n    id\\n    dailyActivityId\\n    description\\n    startTime\\n    endTime\\n    progress\\n  }\\n}\",\"variables\":{\"dailyActivityId\":\"{{dailyactivity_id}}\",\"description\":\"Concrete Pouring\",\"startTime\":\"08:00\",\"endTime\":\"17:00\",\"progress\":50}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/graphql",
+              "host": ["{{base_url}}"],
+              "path": ["graphql"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "ProgressLog",
+      "item": [
+        {
+          "name": "Create ProgressLog",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"query\":\"mutation CreateProgressLog($workItemId: ID!, $date: String!, $quantity: Float!, $notes: String) {\\n  createProgressLog(workItemId: $workItemId, date: $date, quantity: $quantity, notes: $notes) {\\n    id\\n    workItemId\\n    date\\n    quantity\\n    notes\\n  }\\n}\",\"variables\":{\"workItemId\":\"{{workitem_id}}\",\"date\":\"2024-03-01\",\"quantity\":50,\"notes\":\"Good progress\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/graphql",
+              "host": ["{{base_url}}"],
+              "path": ["graphql"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "EquipmentLog",
+      "item": [
+        {
+          "name": "Create EquipmentLog",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"query\":\"mutation CreateEquipmentLog($equipmentId: ID!, $date: String!, $startHour: Float!, $endHour: Float!, $fuelUsage: Float!, $notes: String) {\\n  createEquipmentLog(equipmentId: $equipmentId, date: $date, startHour: $startHour, endHour: $endHour, fuelUsage: $fuelUsage, notes: $notes) {\\n    id\\n    equipmentId\\n    date\\n    startHour\\n    endHour\\n    fuelUsage\\n    notes\\n  }\\n}\",\"variables\":{\"equipmentId\":\"{{equipment_id}}\",\"date\":\"2024-03-01\",\"startHour\":8,\"endHour\":17,\"fuelUsage\":40,\"notes\":\"Normal operation\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/graphql",
+              "host": ["{{base_url}}"],
+              "path": ["graphql"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "ManpowerLog",
+      "item": [
+        {
+          "name": "Create ManpowerLog",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"query\":\"mutation CreateManpowerLog($personnelRoleId: ID!, $date: String!, $quantity: Int!, $notes: String) {\\n  createManpowerLog(personnelRoleId: $personnelRoleId, date: $date, quantity: $quantity, notes: $notes) {\\n    id\\n    personnelRoleId\\n    date\\n    quantity\\n    notes\\n  }\\n}\",\"variables\":{\"personnelRoleId\":\"{{personnelrole_id}}\",\"date\":\"2024-03-01\",\"quantity\":10,\"notes\":\"Full team\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/graphql",
+              "host": ["{{base_url}}"],
+              "path": ["graphql"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "superadmin_username",
+      "value": "superadmin",
+      "type": "string"
+    },
+    {
+      "key": "superadmin_password",
+      "value": "superadmin123",
+      "type": "string"
+    },
+    {
+      "key": "category_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "subcategory_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "unit_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "material_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "equipment_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "spk_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "workitem_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "dailyactivity_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "personnelrole_id",
+      "value": "",
+      "type": "string"
+    }
+  ]
+} 

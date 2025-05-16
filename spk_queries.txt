@@ -1,0 +1,150 @@
+# SPK Queries
+
+# Get all SPKs with optional date filtering
+query GetSPKs($startDate: String, $endDate: String) {
+  spks(startDate: $startDate, endDate: $endDate) {
+    id
+    spkNo
+    wapNo
+    title
+    projectName
+    date
+    contractor
+    workDescription
+    location {
+      id
+      name
+    }
+    startDate
+    endDate
+    budget
+    workItems {
+      workItemId
+      boqVolume {
+        nr
+        r
+      }
+      amount
+      rates {
+        nr {
+          rate
+          description
+        }
+        r {
+          rate
+          description
+        }
+      }
+      description
+      workItem {
+        id
+        name
+        category {
+          id
+          name
+        }
+        subCategory {
+          id
+          name
+        }
+        unit {
+          id
+          name
+        }
+      }
+    }
+    createdAt
+    updatedAt
+  }
+}
+
+# Get single SPK by ID
+query GetSPK($id: ID!) {
+  spk(id: $id) {
+    id
+    spkNo
+    wapNo
+    title
+    projectName
+    date
+    contractor
+    workDescription
+    location {
+      id
+      name
+    }
+    startDate
+    endDate
+    budget
+    workItems {
+      workItemId
+      boqVolume {
+        nr
+        r
+      }
+      amount
+      rates {
+        nr {
+          rate
+          description
+        }
+        r {
+          rate
+          description
+        }
+      }
+      description
+      workItem {
+        id
+        name
+        category {
+          id
+          name
+        }
+        subCategory {
+          id
+          name
+        }
+        unit {
+          id
+          name
+        }
+      }
+    }
+    createdAt
+    updatedAt
+  }
+}
+
+# Get work items by SPK ID
+query GetWorkItemsBySPK($spkId: ID!) {
+  workItemsBySPK(spkId: $spkId) {
+    id
+    name
+    category {
+      id
+      name
+    }
+    subCategory {
+      id
+      name
+    }
+    unit {
+      id
+      name
+    }
+    rates {
+      nr {
+        rate
+        description
+      }
+      r {
+        rate
+        description
+      }
+    }
+    description
+    createdAt
+    updatedAt
+  }
+} 
