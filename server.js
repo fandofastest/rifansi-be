@@ -20,8 +20,9 @@ const { typeDefs, resolvers } = require('./schema');
 const app = express();
 
 // Middleware
+const corsOrigins = process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:5173'];
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:5173'], // Sesuaikan dengan domain frontend Anda
+  origin: corsOrigins,
   credentials: true
 }));
 app.use(express.json());
