@@ -1,20 +1,16 @@
 const mongoose = require('mongoose');
 
 const personnelRoleSchema = new mongoose.Schema({
-  roleCode: { 
-    type: String, 
-    required: true 
+  roleCode: {
+    type: String,
+    required: true
   },
-  roleName: { 
-    type: String, 
-    required: true 
+  roleName: {
+    type: String,
+    required: true
   },
-  hourlyRate: { 
-    type: Number, 
-    required: true 
-  },
-  description: { 
-    type: String 
+  description: {
+    type: String
   }
 }, {
   timestamps: true

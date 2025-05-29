@@ -16,6 +16,10 @@ const MaterialUsageLog = require('./MaterialUsageLog');
 const Contract = require('./Contract');
 const Area = require('./Area');
 const OtherCost = require('./OtherCost');
+const SalaryComponent = require('./SalaryComponent');
+const OvertimeRate = require('./OvertimeRate');
+const Holiday = require('./Holiday');
+const ApproverSetting = require('./ApproverSetting');
 
 module.exports = {
   User,
@@ -35,5 +39,9 @@ module.exports = {
   MaterialUsageLog,
   Contract,
   Area,
-  OtherCost
+  OtherCost,
+  SalaryComponent,
+  OvertimeRate,
+  Holiday,
+  ApproverSetting
 }; 

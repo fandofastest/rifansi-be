@@ -461,6 +461,86 @@
           }
         }
       ]
+    },
+    {
+      "name": "Daily Activity Management",
+      "item": [
+        {
+          "name": "Get Daily Activities by User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query GetDailyActivitiesByUser($userId: ID!) {\\n  dailyActivitiesByUser(userId: $userId) {\\n    id\\n    date\\n    location\\n    weather\\n    status\\n    workStartTime\\n    workEndTime\\n    closingRemarks\\n    createdAt\\n    updatedAt\\n    spk {\\n      id\\n      spkNo\\n      title\\n      projectName\\n    }\\n    user {\\n      id\\n      username\\n      fullName\\n    }\\n  }\\n}\",\n  \"variables\": {\n    \"userId\": \"{{userId}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": ["{{baseUrl}}"],
+              "path": ["graphql"]
+            }
+          }
+        },
+        {
+          "name": "Get Activity Details by User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query GetActivityDetailsByUser($userId: ID!) {\\n  activityDetailsByUser(userId: $userId) {\\n    id\\n    actualQuantity {\\n      nr\\n      r\\n    }\\n    status\\n    remarks\\n    progressPercentage\\n    dailyActivity {\\n      id\\n      date\\n      location\\n    }\\n    workItem {\\n      id\\n      name\\n      unit {\\n        id\\n        name\\n      }\\n    }\\n  }\\n}\",\n  \"variables\": {\n    \"userId\": \"{{userId}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": ["{{baseUrl}}"],
+              "path": ["graphql"]
+            }
+          }
+        },
+        {
+          "name": "Get Daily Activities With Details by User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query GetDailyActivitiesWithDetailsByUser($userId: ID!) {\\n  dailyActivitiesWithDetailsByUser(userId: $userId) {\\n    id\\n    date\\n    location\\n    weather\\n    status\\n    workStartTime\\n    workEndTime\\n    closingRemarks\\n    progressPercentage\\n    activityDetails {\\n      id\\n      actualQuantity {\\n        nr\\n        r\\n      }\\n      status\\n      remarks\\n      workItem {\\n        id\\n        name\\n        unit {\\n          name\\n        }\\n      }\\n    }\\n    equipmentLogs {\\n      id\\n      fuelIn\\n      fuelRemaining\\n      workingHour\\n      isBrokenReported\\n      remarks\\n      equipment {\\n        id\\n        equipmentCode\\n        equipmentType\\n      }\\n    }\\n    manpowerLogs {\\n      id\\n      personCount\\n      normalHoursPerPerson\\n      normalHourlyRate\\n      overtimeHourlyRate\\n      personnelRole {\\n        id\\n        roleName\\n      }\\n    }\\n    materialUsageLogs {\\n      id\\n      quantity\\n      unitRate\\n      remarks\\n      material {\\n        id\\n        name\\n      }\\n    }\\n    otherCosts {\\n      id\\n      costType\\n      amount\\n      description\\n      receiptNumber\\n      remarks\\n    }\\n    spk {\\n      id\\n      spkNo\\n      title\\n    }\\n    user {\\n      id\\n      username\\n      fullName\\n    }\\n    createdAt\\n    updatedAt\\n  }\\n}\",\n  \"variables\": {\n    \"userId\": \"{{userId}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": ["{{baseUrl}}"],
+              "path": ["graphql"]
+            }
+          }
+        }
+      ]
     }
   ],
   "variable": [

@@ -11,9 +11,11 @@ require('dotenv').config();
 const multer = require('multer');
 const path = require('path');
 const { importExcelToSPK } = require('./scripts/importExcell');
+const { ApolloServerPluginDrainHttpServer } = require('@apollo/server/plugin/drainHttpServer');
+const http = require('http');
+const downloadRouter = require('./routes/download');
 
-const typeDefs = require('./schema/typeDefs');
-const resolvers = require('./schema/resolvers');
+const { typeDefs, resolvers } = require('./schema');
 
 const app = express();
 
@@ -27,6 +29,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Import router
 const importRouter = require('./routes/import');
+app.use('/download', downloadRouter);
 app.use('/api', importRouter);
 
 // Initialize Default PersonnelRoles
@@ -89,7 +92,7 @@ const initializeSuperadmin = async () => {
 
     // Check for existing superadmin with old string-based role
     const existingSuperadmin = await User.findOne({ username: 'superadmin' });
-    
+
     if (existingSuperadmin) {
       // Update existing superadmin to use new role reference
       if (existingSuperadmin.role && typeof existingSuperadmin.role === 'string') {
@@ -121,58 +124,71 @@ const initializeSuperadmin = async () => {
 mongoose.connect(process.env.MONGODB_URI)
   .then(async () => {
     console.log('Connected to MongoDB');
-    
+
     // Initialize default roles first, then superadmin
     await initializeDefaultRoles();
     await initializeSuperadmin();
   })
   .catch(err => console.error('MongoDB connection error:', err));
 
-// Create Apollo Server
-const server = new ApolloServer({
-  typeDefs,
-  resolvers,
-});
+async function startApolloServer() {
+  const httpServer = http.createServer(app);
 
-// Start Apollo Server
-async function startServer() {
+  const server = new ApolloServer({
+    typeDefs,
+    resolvers,
+    plugins: [ApolloServerPluginDrainHttpServer({ httpServer })],
+    context: ({ req }) => {
+      console.log('GraphQL request:', req.body);
+      // Get the user token from the headers
+      const token = req.headers.authorization || '';
+
+      // Try to retrieve a user with the token
+      if (token) {
+        try {
+          const user = jwt.verify(token.replace('Bearer ', ''), process.env.JWT_SECRET);
+          return { user };
+        } catch (e) {
+          console.error('Error verifying token:', e);
+        }
+      }
+
+      return { user: null };
+    }
+  });
+
   await server.start();
-  
-  // Apply Apollo middleware
+
   app.use(
     '/graphql',
     cors(),
     json(),
     expressMiddleware(server, {
       context: async ({ req }) => {
-        const token = req.headers.authorization?.split(' ')[1];
+        console.log('GraphQL request:', req.body);
+        // Get the user token from the headers
+        const token = req.headers.authorization || '';
+
+        // Try to retrieve a user with the token
         if (token) {
           try {
-            const decoded = jwt.verify(token, process.env.JWT_SECRET);
-            
-            // If roleCode is missing but userId exists, try to populate it
-            if (!decoded.roleCode && decoded.userId) {
-              const user = await User.findById(decoded.userId).populate('role');
-              if (user && user.role) {
-                decoded.roleCode = user.role.roleCode;
-              }
-            }
-            
-            return { user: decoded };
-          } catch (error) {
-            return {};
+            const user = jwt.verify(token.replace('Bearer ', ''), process.env.JWT_SECRET);
+            return { user };
+          } catch (e) {
+            console.error('Error verifying token:', e);
           }
         }
-        return {};
-      },
+
+        return { user: null };
+      }
     })
   );
 
-  const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-    console.log(`GraphQL endpoint: http://localhost:${PORT}/graphql`);
-  });
+  const PORT = process.env.PORT || 4000;
+  await new Promise((resolve) => httpServer.listen({ port: PORT }, resolve));
+  console.log(`🚀 Server ready at http://localhost:${PORT}/graphql`);
 }
 
-startServer(); 
+startApolloServer().catch(error => {
+  console.error('Error starting server:', error);
+}); 

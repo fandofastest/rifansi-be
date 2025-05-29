@@ -1,0 +1,145 @@
+# Daily Activity Queries
+
+# Mendapatkan daftar aktivitas harian berdasarkan user ID pembuat
+query GetDailyActivitiesByUser($userId: ID!) {
+  dailyActivitiesByUser(userId: $userId) {
+    id
+    date
+    location
+    weather
+    status
+    workStartTime
+    workEndTime
+    closingRemarks
+    createdAt
+    updatedAt
+    spk {
+      id
+      spkNo
+      title
+      projectName
+    }
+    user {
+      id
+      username
+      fullName
+    }
+  }
+}
+
+# Mendapatkan detail aktivitas berdasarkan user ID pembuat
+query GetActivityDetailsByUser($userId: ID!) {
+  activityDetailsByUser(userId: $userId) {
+    id
+    actualQuantity {
+      nr
+      r
+    }
+    status
+    remarks
+    progressPercentage
+    dailyActivity {
+      id
+      date
+      location
+    }
+    workItem {
+      id
+      name
+      unit {
+        id
+        name
+      }
+    }
+  }
+}
+
+# Mendapatkan aktivitas harian beserta detail lengkap berdasarkan user ID pembuat
+query GetDailyActivitiesWithDetailsByUser($userId: ID!) {
+  dailyActivitiesWithDetailsByUser(userId: $userId) {
+    id
+    date
+    location
+    weather
+    status
+    workStartTime
+    workEndTime
+    closingRemarks
+    progressPercentage
+    activityDetails {
+      id
+      actualQuantity {
+        nr
+        r
+      }
+      status
+      remarks
+      workItem {
+        id
+        name
+        unit {
+          name
+        }
+      }
+    }
+    equipmentLogs {
+      id
+      fuelIn
+      fuelRemaining
+      workingHour
+      isBrokenReported
+      remarks
+      equipment {
+        id
+        equipmentCode
+        equipmentType
+      }
+    }
+    manpowerLogs {
+      id
+      personCount
+      normalHoursPerPerson
+      normalHourlyRate
+      overtimeHourlyRate
+      personnelRole {
+        id
+        roleName
+      }
+    }
+    materialUsageLogs {
+      id
+      quantity
+      unitRate
+      remarks
+      material {
+        id
+        name
+      }
+    }
+    otherCosts {
+      id
+      costType
+      amount
+      description
+      receiptNumber
+      remarks
+    }
+    spk {
+      id
+      spkNo
+      title
+    }
+    user {
+      id
+      username
+      fullName
+    }
+    createdAt
+    updatedAt
+  }
+}
+
+# Contoh variabel untuk queries
+{
+  "userId": "contoh_user_id"
+} 

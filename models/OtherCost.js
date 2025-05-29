@@ -1,29 +1,20 @@
 const mongoose = require('mongoose');
 
 const otherCostSchema = new mongoose.Schema({
-  dailyActivityId: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: 'DailyActivity', 
-    required: true 
+  dailyActivityId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'DailyActivity',
+    required: true
   },
   costType: {
     type: String,
-    required: true,
-    enum: [
-      'Transportation', 
-      'Accommodation', 
-      'Administration', 
-      'Tools', 
-      'Communication',
-      'Safety',
-      'Maintenance',
-      'Miscellaneous'
-    ]
+    required: true
   },
   amount: {
     type: Number,
     required: true,
-    min: 0
+    min: 0,
+    default: 0
   },
   description: {
     type: String
@@ -31,8 +22,8 @@ const otherCostSchema = new mongoose.Schema({
   receiptNumber: {
     type: String
   },
-  remarks: { 
-    type: String 
+  remarks: {
+    type: String
   },
   isActive: {
     type: Boolean,
@@ -46,15 +37,11 @@ const otherCostSchema = new mongoose.Schema({
   lastUpdatedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
   }
+}, {
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
 });
 
 // Indexes
@@ -62,12 +49,6 @@ otherCostSchema.index({ dailyActivityId: 1 });
 otherCostSchema.index({ costType: 1 });
 otherCostSchema.index({ isActive: 1 });
 otherCostSchema.index({ createdAt: 1 });
-
-// Middleware untuk update timestamp
-otherCostSchema.pre('save', function(next) {
-  this.updatedAt = new Date();
-  next();
-});
 
 const OtherCost = mongoose.model('OtherCost', otherCostSchema);
 

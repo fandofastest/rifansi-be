@@ -124,17 +124,17 @@ function extractWorkDescription(sheetData, beforeRow) {
 }
 
 async function findOrCreate(model, query, defaults = {}) {
-    const existing = await model.findOne(query);
-    if (existing) {
-      console.log(`📎 Menggunakan ${model.modelName} yang sudah ada:`, query.name || query);
-      return existing;
-    }
-  
-    const doc = await model.create({ ...query, ...defaults });
-    console.log(`🆕 Membuat ${model.modelName}:`, query.name || query);
-    return doc;
+  const existing = await model.findOne(query);
+  if (existing) {
+    console.log(`📎 Menggunakan ${model.modelName} yang sudah ada:`, query.name || query);
+    return existing;
   }
-  
+
+  const doc = await model.create({ ...query, ...defaults });
+  console.log(`🆕 Membuat ${model.modelName}:`, query.name || query);
+  return doc;
+}
+
 
 function detectBOQStart(sheetData) {
   return sheetData.findIndex(row =>
@@ -170,8 +170,8 @@ async function importExcelToSPK(filePath) {
   const meta = {};
   for (const key in labelMap) {
     meta[key] = getLabelValue(sheetData, key)
-             || getLabelFromHorizontalPair(sheetData, key)
-             || getLabelFromInlineRow(sheetData, key);
+      || getLabelFromHorizontalPair(sheetData, key)
+      || getLabelFromInlineRow(sheetData, key);
     if (meta[key]) {
       console.log(`🔹 ${key}: ${meta[key]}`);
     } else {
@@ -210,11 +210,11 @@ async function importExcelToSPK(filePath) {
     if (!Array.isArray(row) || row.length < 3) continue;
 
     let rawDescription = row[2] || row[1] || row[0];
-let description = typeof rawDescription === "string"
-  ? rawDescription.replace(/scope of work/gi, "").trim().replace(/\s+/g, " ")
-  : null;
+    let description = typeof rawDescription === "string"
+      ? rawDescription.replace(/scope of work/gi, "").trim().replace(/\s+/g, " ")
+      : null;
 
-        const unitName = row[3]?.toString().trim();
+    const unitName = row[3]?.toString().trim();
     const totalPrice = parseFloat(row[8]) || 0;
 
     console.log(`📄 Baris ${i}`);
@@ -224,7 +224,7 @@ let description = typeof rawDescription === "string"
 
     const nextRow = sheetData[i + 1];
     const nextHasUnit = nextRow && typeof nextRow[3] === "string" && nextRow[3].trim() !== "";
-    
+
     if (!unitName && description) {
       if (nextHasUnit) {
         currentSubCategory = description;
@@ -235,7 +235,7 @@ let description = typeof rawDescription === "string"
       }
       continue;
     }
-    
+
 
     if (!description || !unitName) {
       console.warn(`  ⚠️ Tidak lengkap, dilewati.`);

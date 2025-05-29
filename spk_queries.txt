@@ -147,4 +147,134 @@ query GetWorkItemsBySPK($spkId: ID!) {
     createdAt
     updatedAt
   }
+}
+
+# Get SPK Details with Progress by SPK ID
+query GetSPKDetailsWithProgressBySpkId($spkId: ID!) {
+  spkDetailsWithProgress(spkId: $spkId) {
+    id
+    spkNo
+    wapNo
+    title
+    projectName
+    date
+    contractor
+    workDescription
+    location {
+      id
+      name
+    }
+    startDate
+    endDate
+    budget
+    totalProgress {
+      percentage
+      totalBudget
+      totalSpent
+      remainingBudget
+    }
+    workItems {
+      workItemId
+      description
+      boqVolume {
+        nr
+        r
+      }
+      amount
+      rates {
+        nr {
+          rate
+          description
+        }
+        r {
+          rate
+          description
+        }
+      }
+      progress {
+        completedVolume {
+          nr
+          r
+        }
+        remainingVolume {
+          nr
+          r
+        }
+        percentageComplete
+        spentAmount
+        remainingAmount
+      }
+      workItem {
+        id
+        name
+        category {
+          id
+          name
+        }
+        subCategory {
+          id
+          name
+        }
+        unit {
+          id
+          name
+        }
+      }
+    }
+    costBreakdown {
+      totalCost
+      dailyActivities {
+        activityId
+        date
+        location
+        weather
+        status
+        workStartTime
+        workEndTime
+        createdBy
+        closingRemarks
+        totalCost
+      materials {
+        totalCost
+        items {
+          material
+          quantity
+          unit
+            unitRate
+          cost
+        }
+      }
+      manpower {
+        totalCost
+        items {
+          role
+          numberOfWorkers
+          workingHours
+            hourlyRate
+          cost
+        }
+      }
+      equipment {
+        totalCost
+        items {
+          equipment
+          workingHours
+            hourlyRate
+            fuelUsed
+            fuelPrice
+          cost
+        }
+      }
+      otherCosts {
+        totalCost
+        items {
+          description
+          cost
+          }
+        }
+      }
+    }
+    createdAt
+    updatedAt
+  }
 } 

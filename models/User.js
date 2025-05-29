@@ -48,9 +48,9 @@ const userSchema = new mongoose.Schema({
 });
 
 // Hash password before saving
-userSchema.pre('save', async function(next) {
+userSchema.pre('save', async function (next) {
   if (!this.isModified('passwordHash')) return next();
-  
+
   try {
     const salt = await bcrypt.genSalt(10);
     this.passwordHash = await bcrypt.hash(this.passwordHash, salt);
@@ -61,48 +61,48 @@ userSchema.pre('save', async function(next) {
 });
 
 // Method to compare password
-userSchema.methods.comparePassword = async function(candidatePassword) {
+userSchema.methods.comparePassword = async function (candidatePassword) {
   return bcrypt.compare(candidatePassword, this.passwordHash);
 };
 
 // Method to check if user has a specific role code
-userSchema.methods.hasRole = async function(roleCode) {
+userSchema.methods.hasRole = async function (roleCode) {
   await this.populate('role');
   return this.role && this.role.roleCode === roleCode;
 };
 
 // Method to check if user is superadmin
-userSchema.methods.isSuperadmin = async function() {
+userSchema.methods.isSuperadmin = async function () {
   return this.hasRole('SUPERADMIN');
 };
 
 // Method to check if user is admin
-userSchema.methods.isAdmin = async function() {
+userSchema.methods.isAdmin = async function () {
   const role = await this.populate('role').then(user => user.role.roleCode);
   return role === 'ADMIN' || role === 'SUPERADMIN';
 };
 
 // Method to check if user is mandor
-userSchema.methods.isMandor = async function() {
+userSchema.methods.isMandor = async function () {
   return this.hasRole('MANDOR');
 };
 
 // Method to check if user is supervisor
-userSchema.methods.isSupervisor = async function() {
+userSchema.methods.isSupervisor = async function () {
   return this.hasRole('SUPERVISOR');
 };
 
 // Method to check if user is regular user
-userSchema.methods.isUser = async function() {
+userSchema.methods.isUser = async function () {
   return this.hasRole('USER');
 };
 
 // Virtual for password (not stored in DB)
 userSchema.virtual('password')
-  .set(function(password) {
+  .set(function (password) {
     this.passwordHash = password;
   })
-  .get(function() {
+  .get(function () {
     return this.passwordHash;
   });
 
