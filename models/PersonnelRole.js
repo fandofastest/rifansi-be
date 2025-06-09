@@ -11,6 +11,11 @@ const personnelRoleSchema = new mongoose.Schema({
   },
   description: {
     type: String
+  },
+  isPersonel: {
+    type: Boolean,
+    default: true,
+    required: true
   }
 }, {
   timestamps: true

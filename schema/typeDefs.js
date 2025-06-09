@@ -1,12 +1,15 @@
 const { gql } = require('graphql-tag');
 
 const typeDefs = gql`
+  scalar Date
+
   # User
   type User {
     id: ID!
     username: String!
     fullName: String!
     role: PersonnelRole!
+    area: Area
     email: String!
     phone: String
     isActive: Boolean
@@ -101,7 +104,19 @@ const typeDefs = gql`
     roleCode: String!
     roleName: String!
     description: String
+    isPersonel: Boolean!
     salaryComponent: SalaryComponent
+    createdAt: String
+    updatedAt: String
+  }
+
+  # PersonnelRole when accessed through SalaryComponent
+  type SalaryComponentPersonnelRole {
+    id: ID
+    roleCode: String
+    roleName: String
+    description: String
+    isPersonel: Boolean
     createdAt: String
     updatedAt: String
   }
@@ -111,10 +126,17 @@ const typeDefs = gql`
     id: ID!
     fuelType: String!
     pricePerLiter: Float!
-    effectiveDate: Date!
+    effectiveDate: String!
     description: String
-    createdAt: Date
-    updatedAt: Date
+    createdAt: String!
+    updatedAt: String!
+  }
+
+  input FuelPriceInput {
+    fuelType: String!
+    pricePerLiter: Float!
+    effectiveDate: String!
+    description: String
   }
 
   # Area
@@ -411,6 +433,7 @@ const typeDefs = gql`
     fuelPrices: [FuelPrice!]!
     fuelPrice(id: ID!): FuelPrice
     currentFuelPrice(fuelType: String!): FuelPrice
+    fuelPriceByDate(fuelType: String!, date: String!): FuelPrice
 
     # Area
     areas: [Area!]!
@@ -653,6 +676,7 @@ const typeDefs = gql`
       roleCode: String!
       roleName: String!
       description: String
+      isPersonel: Boolean = true
     ): PersonnelRole!
 
     updatePersonnelRole(
@@ -660,26 +684,14 @@ const typeDefs = gql`
       roleCode: String
       roleName: String
       description: String
+      isPersonel: Boolean
     ): PersonnelRole!
 
     deletePersonnelRole(id: ID!): Boolean!
 
     # FuelPrice
-    createFuelPrice(
-      fuelType: String!
-      pricePerLiter: Float!
-      effectiveDate: Date!
-      description: String
-    ): FuelPrice!
-
-    updateFuelPrice(
-      id: ID!
-      fuelType: String
-      pricePerLiter: Float
-      effectiveDate: String
-      description: String
-    ): FuelPrice!
-
+    createFuelPrice(input: FuelPriceInput!): FuelPrice!
+    updateFuelPrice(id: ID!, fuelType: String, pricePerLiter: Float, effectiveDate: String, description: String): FuelPrice!
     deleteFuelPrice(id: ID!): Boolean!
 
     # SPK
@@ -989,6 +1001,22 @@ const typeDefs = gql`
     createBackup(description: String): BackupResponse!
     restoreFromBackup(backupPath: String!): RestoreResponse!
     deleteBackup(backupPath: String!): Boolean!
+
+    # User Area Management
+    updateUserArea(
+      userId: ID!
+      areaId: ID!
+    ): User!
+
+    removeUserArea(
+      userId: ID!
+    ): User!
+
+    # Bulk Area Assignment
+    assignUsersToArea(
+      userIds: [ID!]!
+      areaId: ID!
+    ): [User!]!
   }
 
   # Input Types
@@ -1301,7 +1329,7 @@ const typeDefs = gql`
   # SalaryComponent
   type SalaryComponent {
     id: ID!
-    personnelRole: PersonnelRole!
+    personnelRole: SalaryComponentPersonnelRole
     gajiPokok: Float
     tunjanganTetap: Float
     tunjanganTidakTetap: Float
@@ -1390,15 +1418,6 @@ const typeDefs = gql`
     overtimeMultiplier: Float
     workHours: Int
   }
-
-  input FuelPriceInput {
-    fuelType: String!
-    pricePerLiter: Float!
-    effectiveDate: Date!
-    description: String
-  }
-
-  scalar Date
 
   # BOQ Volume Types
   type BOQVolume {

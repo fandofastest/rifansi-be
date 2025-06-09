@@ -54,7 +54,7 @@ async function migrateUserRoles() {
         // Map the old role string to new role code
         const oldRole = user.role.toLowerCase();
         const newRoleCode = roleMapping[oldRole] || 'USER'; // Default to USER if mapping not found
-        
+
         // Get the role ID from the map
         const newRoleId = roleMap[newRoleCode];
         if (!newRoleId) {

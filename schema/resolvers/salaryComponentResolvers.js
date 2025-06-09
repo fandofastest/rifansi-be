@@ -1,9 +1,11 @@
 const { SalaryComponent, PersonnelRole, OvertimeRate, Holiday } = require('../../models');
+const mongoose = require('mongoose');
 
 const Query = {
     salaryComponents: async (_, __, { user }) => {
         if (!user) throw new Error('Not authenticated');
-        return SalaryComponent.find().populate('personnelRole');
+        const components = await SalaryComponent.find().populate('personnelRole');
+        return components;
     },
     salaryComponent: async (_, { id }, { user }) => {
         if (!user) throw new Error('Not authenticated');
@@ -115,8 +117,43 @@ const Mutation = {
 };
 
 const SalaryComponentResolvers = {
+    id: (parent) => parent._id || parent.id,
     personnelRole: async (parent) => {
-        return PersonnelRole.findById(parent.personnelRole);
+        if (!parent.personnelRole) return null;
+
+        // Handle case where personnelRole is already populated
+        if (typeof parent.personnelRole === 'object' && parent.personnelRole._id) {
+            return {
+                id: parent.personnelRole._id.toString(),
+                roleCode: parent.personnelRole.roleCode || null,
+                roleName: parent.personnelRole.roleName || null,
+                description: parent.personnelRole.description || null,
+                isPersonel: parent.personnelRole.isPersonel || null,
+                createdAt: parent.personnelRole.createdAt || null,
+                updatedAt: parent.personnelRole.updatedAt || null
+            };
+        }
+
+        // Handle case where personnelRole is an ID
+        if (!mongoose.isValidObjectId(parent.personnelRole)) return null;
+
+        try {
+            const role = await PersonnelRole.findById(parent.personnelRole);
+            if (!role) return null;
+
+            return {
+                id: role._id.toString(),
+                roleCode: role.roleCode || null,
+                roleName: role.roleName || null,
+                description: role.description || null,
+                isPersonel: role.isPersonel || null,
+                createdAt: role.createdAt || null,
+                updatedAt: role.updatedAt || null
+            };
+        } catch (error) {
+            console.error('Error fetching personnel role:', error);
+            return null;
+        }
     }
 };
 

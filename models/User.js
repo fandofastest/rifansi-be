@@ -23,6 +23,10 @@ const userSchema = new mongoose.Schema({
     ref: 'PersonnelRole',
     required: true
   },
+  area: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Area'
+  },
   email: {
     type: String,
     required: true,
@@ -84,7 +88,7 @@ userSchema.methods.isAdmin = async function () {
 
 // Method to check if user is mandor
 userSchema.methods.isMandor = async function () {
-  return this.hasRole('MANDOR');
+  return this.hasRole('PMCOW');
 };
 
 // Method to check if user is supervisor
@@ -93,9 +97,6 @@ userSchema.methods.isSupervisor = async function () {
 };
 
 // Method to check if user is regular user
-userSchema.methods.isUser = async function () {
-  return this.hasRole('USER');
-};
 
 // Virtual for password (not stored in DB)
 userSchema.virtual('password')
@@ -110,5 +111,6 @@ userSchema.virtual('password')
 userSchema.index({ username: 1 });
 userSchema.index({ email: 1 });
 userSchema.index({ role: 1 });
+userSchema.index({ area: 1 });
 
 module.exports = mongoose.model('User', userSchema); 

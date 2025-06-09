@@ -1,4 +1,4 @@
-const { User, PersonnelRole } = require('../../models');
+const { User, PersonnelRole, SalaryComponent, Area } = require('../../models');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
@@ -6,14 +6,14 @@ const mongoose = require('mongoose');
 const Query = {
     me: async (_, __, { user }) => {
         if (!user) throw new Error('Not authenticated');
-        const currentUser = await User.findById(user.userId);
+        const currentUser = await User.findById(user.userId).populate('area');
         if (!currentUser) throw new Error('User not found');
         return currentUser;
     },
 
     users: async (_, __, { user }) => {
         if (!user) throw new Error('Not authenticated');
-        const users = await User.find();
+        const users = await User.find().populate('area');
         return users.filter(user =>
             user.username &&
             user.fullName &&
@@ -24,7 +24,7 @@ const Query = {
 
     user: async (_, { id }, { user }) => {
         if (!user) throw new Error('Not authenticated');
-        return User.findById(id);
+        return User.findById(id).populate('area');
     }
 };
 
@@ -297,6 +297,75 @@ const Mutation = {
                 user: null
             };
         }
+    },
+
+    updateUserArea: async (_, { userId, areaId }, { user }) => {
+        if (!user) throw new Error('Not authenticated');
+
+        // Check if user has permission (admin or superadmin)
+        const currentUser = await User.findById(user.userId).populate('role');
+        if (!currentUser || !await currentUser.isAdmin()) {
+            throw new Error('Not authorized to update user area');
+        }
+
+        // Verify area exists
+        const area = await Area.findById(areaId);
+        if (!area) throw new Error('Area not found');
+
+        // Update user's area
+        const updatedUser = await User.findByIdAndUpdate(
+            userId,
+            { area: areaId },
+            { new: true }
+        ).populate(['role', 'area']);
+
+        if (!updatedUser) throw new Error('User not found');
+
+        return updatedUser;
+    },
+
+    removeUserArea: async (_, { userId }, { user }) => {
+        if (!user) throw new Error('Not authenticated');
+
+        // Check if user has permission (admin or superadmin)
+        const currentUser = await User.findById(user.userId).populate('role');
+        if (!currentUser || !await currentUser.isAdmin()) {
+            throw new Error('Not authorized to remove user area');
+        }
+
+        // Remove area from user
+        const updatedUser = await User.findByIdAndUpdate(
+            userId,
+            { $unset: { area: "" } },
+            { new: true }
+        ).populate(['role', 'area']);
+
+        if (!updatedUser) throw new Error('User not found');
+
+        return updatedUser;
+    },
+
+    assignUsersToArea: async (_, { userIds, areaId }, { user }) => {
+        if (!user) throw new Error('Not authenticated');
+
+        // Check if user has permission (admin or superadmin)
+        const currentUser = await User.findById(user.userId).populate('role');
+        if (!currentUser || !await currentUser.isAdmin()) {
+            throw new Error('Not authorized to assign users to area');
+        }
+
+        // Verify area exists
+        const area = await Area.findById(areaId);
+        if (!area) throw new Error('Area not found');
+
+        // Update all users
+        const updatedUsers = await User.updateMany(
+            { _id: { $in: userIds } },
+            { area: areaId }
+        );
+
+        // Return updated users
+        return User.find({ _id: { $in: userIds } }).populate(['role', 'area']);
     }
 };
 
@@ -304,33 +373,90 @@ const UserResolvers = {
     id: (parent) => parent._id || parent.id,
     role: async (parent) => {
         if (parent.role && typeof parent.role === 'object' && parent.role.roleCode) {
-            return {
-                ...parent.role,
-                id: parent.role._id,
+            // Role sudah ada dan valid
+            const roleObj = {
+                id: parent.role._id || parent.role.id,
                 roleCode: parent.role.roleCode,
                 roleName: parent.role.roleName,
                 description: parent.role.description,
+                isPersonel: parent.role.isPersonel || false,
                 createdAt: parent.role.createdAt,
                 updatedAt: parent.role.updatedAt
             };
+
+            // Jika role valid, cari salary component
+            if (mongoose.isValidObjectId(roleObj.id)) {
+                const salaryComponent = await SalaryComponent.findOne({ personnelRole: roleObj.id });
+                roleObj.salaryComponent = salaryComponent;
+            }
+
+            return roleObj;
         }
 
         if (parent.role && mongoose.isValidObjectId(parent.role)) {
             const roleDoc = await PersonnelRole.findById(parent.role);
             if (roleDoc) {
-                return {
+                const roleObj = {
                     ...roleDoc.toObject(),
-                    id: roleDoc._id,
+                    id: roleDoc._id
                 };
+
+                // Cari salary component untuk role yang valid
+                const salaryComponent = await SalaryComponent.findOne({ personnelRole: roleDoc._id });
+                roleObj.salaryComponent = salaryComponent;
+
+                return roleObj;
             }
         }
 
+        // Cari atau buat default USER role
+        let defaultRole = await PersonnelRole.findOne({ roleCode: 'USER' });
+        if (!defaultRole) {
+            defaultRole = await PersonnelRole.create({
+                roleCode: 'USER',
+                roleName: 'Regular User',
+                description: 'Default role',
+                isPersonel: true
+            });
+        }
+
         return {
-            id: "default",
-            roleCode: "USER",
-            roleName: "Regular User",
-            description: "Default role"
+            id: defaultRole._id,
+            roleCode: defaultRole.roleCode,
+            roleName: defaultRole.roleName,
+            description: defaultRole.description,
+            isPersonel: defaultRole.isPersonel,
+            salaryComponent: null,
+            createdAt: defaultRole.createdAt,
+            updatedAt: defaultRole.updatedAt
         };
+    },
+    area: async (parent) => {
+        if (!parent.area) return null;
+
+        if (typeof parent.area === 'object' && parent.area._id) {
+            return {
+                id: parent.area._id,
+                name: parent.area.name,
+                location: parent.area.location,
+                createdAt: parent.area.createdAt,
+                updatedAt: parent.area.updatedAt
+            };
+        }
+
+        try {
+            const area = await Area.findById(parent.area);
+            return area ? {
+                id: area._id,
+                name: area.name,
+                location: area.location,
+                createdAt: area.createdAt,
+                updatedAt: area.updatedAt
+            } : null;
+        } catch (error) {
+            console.error('Error fetching area:', error);
+            return null;
+        }
     }
 };
 

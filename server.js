@@ -41,31 +41,36 @@ const initializeDefaultRoles = async () => {
         roleCode: 'SUPERADMIN',
         roleName: 'Super Administrator',
         hourlyRate: 0,
-        description: 'Super Administrator with full access'
+        description: 'Super Administrator with full access',
+        isPersonel: false
       },
       {
         roleCode: 'ADMIN',
         roleName: 'Administrator',
         hourlyRate: 0,
-        description: 'Administrator with management access'
+        description: 'Administrator with management access',
+        isPersonel: false
       },
       {
         roleCode: 'SUPERVISOR',
         roleName: 'Supervisor',
         hourlyRate: 0,
-        description: 'Supervisor role'
+        description: 'Supervisor role',
+        isPersonel: true
       },
       {
         roleCode: 'MANDOR',
         roleName: 'Mandor',
         hourlyRate: 0,
-        description: 'Mandor role'
+        description: 'Mandor role',
+        isPersonel: true
       },
       {
         roleCode: 'USER',
         roleName: 'Regular User',
         hourlyRate: 0,
-        description: 'Regular user with limited access'
+        description: 'Regular user with limited access',
+        isPersonel: true
       }
     ];
 
