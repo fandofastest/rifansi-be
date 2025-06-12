@@ -59,17 +59,10 @@ const initializeDefaultRoles = async () => {
         isPersonel: true
       },
       {
-        roleCode: 'MANDOR',
-        roleName: 'Mandor',
+        roleCode: 'PMCOW',
+        roleName: 'PMCOW',
         hourlyRate: 0,
-        description: 'Mandor role',
-        isPersonel: true
-      },
-      {
-        roleCode: 'USER',
-        roleName: 'Regular User',
-        hourlyRate: 0,
-        description: 'Regular user with limited access',
+        description: 'PMCOW role for equipment repair reporting',
         isPersonel: true
       }
     ];

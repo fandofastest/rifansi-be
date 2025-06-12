@@ -1,9 +1,16 @@
 const { Equipment, Area, Contract, FuelPrice, User } = require('../../models');
 
 const Query = {
-    equipments: async (_, __, { user }) => {
+    equipments: async (_, { status }, { user }) => {
         if (!user) throw new Error('Not authenticated');
-        const equipments = await Equipment.find().populate('area');
+        
+        // Build query object
+        const query = {};
+        if (status) {
+            query.serviceStatus = status.toUpperCase();
+        }
+        
+        const equipments = await Equipment.find(query).populate('area');
         // Transform serviceStatus ke uppercase dan pastikan id ada
         return equipments.map(equipment => {
             const equipmentObj = equipment.toObject();

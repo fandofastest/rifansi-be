@@ -420,7 +420,7 @@ const typeDefs = gql`
     material(id: ID!): Material
 
     # Equipment
-    equipments: [Equipment!]!
+    equipments(status: EquipmentServiceStatus): [Equipment!]!
     equipment(id: ID!): Equipment
     equipmentsByStatus(status: String!): [Equipment!]!
     equipmentsByArea(areaId: ID!): [Equipment!]!
@@ -530,6 +530,15 @@ const typeDefs = gql`
     # Backup and Restore Queries
     getBackupHistory: [BackupResponse!]!
     getLatestBackup: BackupResponse
+
+    # Equipment Repair Report Queries
+    equipmentRepairReports(status: RepairReportStatus, equipmentId: ID, reportedBy: ID): [EquipmentRepairReport!]!
+    equipmentRepairReport(id: ID!): EquipmentRepairReport
+    equipmentRepairReportsByEquipment(equipmentId: ID!): [EquipmentRepairReport!]!
+    equipmentRepairReportsByReporter(reportedBy: ID!): [EquipmentRepairReport!]!
+    equipmentRepairReportsByCreator(createdBy: ID): [EquipmentRepairReport!]!
+    myEquipmentRepairReports: [EquipmentRepairReport!]!
+    pendingRepairReports: [EquipmentRepairReport!]!
   }
 
   # Mutations
@@ -1021,6 +1030,13 @@ const typeDefs = gql`
       userIds: [ID!]!
       areaId: ID!
     ): [User!]!
+
+    # Equipment Repair Report Mutations
+    createEquipmentRepairReport(input: CreateEquipmentRepairReportInput!): EquipmentRepairReport!
+    updateEquipmentRepairReport(id: ID!, input: UpdateEquipmentRepairReportInput!): EquipmentRepairReport!
+    reviewEquipmentRepairReport(id: ID!, input: ReviewEquipmentRepairReportInput!): EquipmentRepairReport!
+    updateRepairProgress(id: ID!, input: UpdateRepairProgressInput!): EquipmentRepairReport!
+    deleteEquipmentRepairReport(id: ID!): Boolean!
   }
 
   # Input Types
@@ -1674,6 +1690,107 @@ const typeDefs = gql`
     success: Boolean!
     message: String!
     user: User
+  }
+
+  # Equipment Repair Report
+  type EquipmentRepairReport {
+    id: ID!
+    reportNumber: String!
+    equipment: Equipment!
+    reportedBy: User!
+    reportDate: String!
+    problemDescription: String!
+    damageLevel: DamageLevel!
+    reportImages: [String!]
+    location: Area
+    immediateAction: String
+    status: RepairReportStatus!
+    priority: RepairPriority!
+    reviewedBy: User
+    reviewDate: String
+    reviewNotes: String
+    rejectionReason: String
+    assignedTechnician: String
+    estimatedCost: Float
+    actualCost: Float
+    repairStartDate: String
+    repairCompletionDate: String
+    repairNotes: String
+    repairImages: [String!]
+    statusHistory: [RepairStatusHistory!]!
+    isActive: Boolean
+    createdAt: String!
+    updatedAt: String!
+  }
+
+  type RepairStatusHistory {
+    status: RepairReportStatus!
+    changedBy: User!
+    changedAt: String!
+    notes: String
+  }
+
+  enum DamageLevel {
+    RINGAN
+    SEDANG
+    BERAT
+    TOTAL
+  }
+
+  enum RepairReportStatus {
+    PENDING
+    APPROVED
+    REJECTED
+    IN_REPAIR
+    COMPLETED
+  }
+
+  enum RepairPriority {
+    LOW
+    MEDIUM
+    HIGH
+    URGENT
+  }
+
+  # Input Types for Equipment Repair Report
+  input CreateEquipmentRepairReportInput {
+    equipmentId: ID!
+    problemDescription: String!
+    damageLevel: DamageLevel!
+    reportImages: [String!]
+    location: ID!
+    immediateAction: String
+    priority: RepairPriority
+  }
+
+  input UpdateEquipmentRepairReportInput {
+    problemDescription: String
+    damageLevel: DamageLevel
+    reportImages: [String!]
+    location: ID
+    immediateAction: String
+    priority: RepairPriority
+    assignedTechnician: String
+    estimatedCost: Float
+    repairStartDate: String
+    repairNotes: String
+  }
+
+  input ReviewEquipmentRepairReportInput {
+    status: RepairReportStatus!
+    reviewNotes: String
+    rejectionReason: String
+    assignedTechnician: String
+    estimatedCost: Float
+    priority: RepairPriority
+  }
+
+  input UpdateRepairProgressInput {
+    status: RepairReportStatus
+    actualCost: Float
+    repairCompletionDate: String
+    repairNotes: String
+    repairImages: [String!]
   }
 `;
 

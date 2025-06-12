@@ -20,6 +20,7 @@ const SalaryComponent = require('./SalaryComponent');
 const OvertimeRate = require('./OvertimeRate');
 const Holiday = require('./Holiday');
 const ApproverSetting = require('./ApproverSetting');
+const EquipmentRepairReport = require('./EquipmentRepairReport');
 
 module.exports = {
   User,
@@ -43,5 +44,6 @@ module.exports = {
   SalaryComponent,
   OvertimeRate,
   Holiday,
-  ApproverSetting
+  ApproverSetting,
+  EquipmentRepairReport
 }; 

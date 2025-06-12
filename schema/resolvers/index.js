@@ -15,6 +15,7 @@ const workItemResolvers = require('./workItemResolvers');
 const unitResolvers = require('./unitResolvers');
 const approverSettingResolvers = require('./approverSettingResolvers');
 const backupResolvers = require('./backupResolvers');
+const equipmentRepairReportResolvers = require('./equipmentRepairReportResolvers');
 const { GraphQLScalarType } = require('graphql');
 const { Kind } = require('graphql/language');
 
@@ -68,7 +69,8 @@ const resolvers = {
         ...workItemResolvers.Query,
         ...unitResolvers.Query,
         ...approverSettingResolvers.Query,
-        ...backupResolvers.Query
+        ...backupResolvers.Query,
+        ...equipmentRepairReportResolvers.Query
     },
     Mutation: {
         ...userResolvers.Mutation,
@@ -87,7 +89,8 @@ const resolvers = {
         ...workItemResolvers.Mutation,
         ...unitResolvers.Mutation,
         ...approverSettingResolvers.Mutation,
-        ...backupResolvers.Mutation
+        ...backupResolvers.Mutation,
+        ...equipmentRepairReportResolvers.Mutation
     },
     // Type Resolvers
     Category: categoryResolvers.Category,
@@ -96,6 +99,8 @@ const resolvers = {
     Unit: unitResolvers.Unit,
     Equipment: equipmentResolvers.Equipment,
     EquipmentContract: equipmentResolvers.EquipmentContract,
+    EquipmentAreaHistory: equipmentResolvers.EquipmentAreaHistory,
+    EquipmentServiceHistory: equipmentResolvers.EquipmentServiceHistory,
     WorkItem: workItemResolvers.WorkItem,
     DailyActivity: dailyActivityResolvers.DailyActivity,
     ActivityDetail: dailyActivityResolvers.ActivityDetail,
@@ -110,7 +115,9 @@ const resolvers = {
     PersonnelRole: personnelRoleResolvers.PersonnelRole,
     SalaryComponent: salaryComponentResolvers.SalaryComponent,
     Holiday: holidayResolvers.Holiday,
-    ApproverSetting: approverSettingResolvers.ApproverSetting
+    ApproverSetting: approverSettingResolvers.ApproverSetting,
+    EquipmentRepairReport: equipmentRepairReportResolvers.EquipmentRepairReport,
+    RepairStatusHistory: equipmentRepairReportResolvers.RepairStatusHistory
 };
 
 module.exports = resolvers; 
