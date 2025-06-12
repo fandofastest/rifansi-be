@@ -29,7 +29,7 @@ const Query = {
 };
 
 const Mutation = {
-    register: async (_, { username, password, fullName, role, email, phone }) => {
+    register: async (_, { username, password, fullName, role, email, phone, area }) => {
         try {
             const personnelRole = await PersonnelRole.findOne({ roleCode: role });
             if (!personnelRole) {
@@ -41,17 +41,25 @@ const Mutation = {
                 throw new Error('Username already exists');
             }
 
+            if (area) {
+                const areaExists = await Area.findById(area);
+                if (!areaExists) {
+                    throw new Error('Area not found');
+                }
+            }
+
             const user = new User({
                 username,
                 passwordHash: password,
                 fullName,
                 role: personnelRole._id,
                 email,
-                phone
+                phone,
+                area
             });
 
             await user.save();
-            await user.populate('role');
+            await user.populate(['role', 'area']);
 
             const token = jwt.sign(
                 { userId: user.id, roleCode: personnelRole.roleCode },

@@ -458,6 +458,9 @@ const typeDefs = gql`
     dailyActivitiesWithDetailsByUser(userId: ID!): [DailyActivityWithDetails!]!
     dailyActivitiesWithDetailsByUserAndApprover(userId: ID!, approverId: ID!): [DailyActivityWithDetails!]!
     dailyActivitiesWithDetailsByApprover(approverId: ID!): [DailyActivityWithDetails!]!
+    
+    # Get reports (daily activities) by area
+    getLaporanByArea(areaId: ID, startDate: String, endDate: String, status: String): [LaporanByAreaDetails!]!
 
     # ActivityDetail
     activityDetails: [ActivityDetail!]!
@@ -539,6 +542,7 @@ const typeDefs = gql`
       role: String!
       email: String!
       phone: String
+      area: ID
     ): AuthPayload!
     
     login(
@@ -1288,6 +1292,34 @@ const typeDefs = gql`
     startImages: [String!]
     finishImages: [String!]
     closingRemarks: String
+    progressPercentage: Float!
+    activityDetails: [ActivityDetail!]!
+    equipmentLogs: [EquipmentLog!]!
+    manpowerLogs: [ManpowerLog!]!
+    materialUsageLogs: [MaterialUsageLog!]!
+    otherCosts: [OtherCost!]!
+    spkDetail: SPK
+    userDetail: User
+    createdAt: String!
+    updatedAt: String!
+  }
+
+  # Laporan by Area Details type
+  type LaporanByAreaDetails {
+    id: ID!
+    date: String!
+    area: Area
+    weather: String
+    status: String!
+    workStartTime: String
+    workEndTime: String
+    startImages: [String!]
+    finishImages: [String!]
+    closingRemarks: String
+    isApproved: Boolean
+    approvedBy: User
+    approvedAt: String
+    rejectionReason: String
     progressPercentage: Float!
     activityDetails: [ActivityDetail!]!
     equipmentLogs: [EquipmentLog!]!

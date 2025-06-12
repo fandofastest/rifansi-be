@@ -630,6 +630,143 @@ const Query = {
             console.error('Error in dailyActivitiesWithDetailsByApprover:', error);
             throw error;
         }
+    },
+
+    // New query: Get reports (daily activities) by area
+    getLaporanByArea: async (_, { areaId, startDate, endDate, status }, { user }) => {
+        if (!user) throw new Error('Not authenticated');
+        
+        try {
+            // Build query filter
+            const query = {};
+            
+            if (areaId) {
+                query.areaId = areaId;
+            }
+            
+            if (startDate || endDate) {
+                query.date = {};
+                if (startDate) query.date.$gte = new Date(startDate);
+                if (endDate) query.date.$lte = new Date(endDate);
+            }
+            
+            if (status) {
+                query.status = status;
+            }
+
+            // Get daily activities by area with populated data
+            const dailyActivities = await DailyActivity.find(query)
+                .populate('spkId')
+                .populate('createdBy')
+                .populate('areaId')
+                .populate('approvedBy')
+                .sort({ date: -1 });
+
+            // Populate all related data for each activity
+            const result = await Promise.all(
+                dailyActivities.map(async (da) => {
+                    const activityDetails = await ActivityDetail.find({ dailyActivityId: da._id })
+                        .populate({
+                            path: 'workItemId',
+                            populate: {
+                                path: 'unitId',
+                                select: 'name code'
+                            }
+                        });
+
+                    const equipmentLogs = await EquipmentLog.find({ dailyActivityId: da._id })
+                        .populate('equipmentId');
+
+                    const manpowerLogs = await ManpowerLog.find({
+                        dailyActivityId: da._id,
+                        isActive: true
+                    }).populate('role');
+
+                    const materialUsageLogs = await MaterialUsageLog.find({ dailyActivityId: da._id })
+                        .populate('materialId');
+
+                    const otherCosts = await OtherCost.find({ dailyActivityId: da._id });
+
+                    // Calculate progress percentage
+                    const progressPercentage = await calculateProgressPercentage(da._id);
+
+                    // Get latest fuel price for equipment calculations
+                    const latestFuelPrice = await FuelPrice.findOne()
+                        .sort({ effectiveDate: -1 });
+
+                    return {
+                        id: da._id,
+                        date: da.date,
+                        area: da.areaId ? {
+                            id: da.areaId._id,
+                            name: da.areaId.name,
+                            location: da.areaId.location
+                        } : null,
+                        weather: da.weather,
+                        status: da.status,
+                        workStartTime: da.workStartTime,
+                        workEndTime: da.workEndTime,
+                        startImages: da.startImages || [],
+                        finishImages: da.finishImages || [],
+                        closingRemarks: da.closingRemarks,
+                        isApproved: da.isApproved,
+                        approvedBy: da.approvedBy,
+                        approvedAt: da.approvedAt,
+                        rejectionReason: da.rejectionReason,
+                        progressPercentage,
+                        activityDetails: activityDetails.map(detail => {
+                            if (!detail || !detail.workItemId) return null;
+                            try {
+                                return {
+                                    ...detail.toObject(),
+                                    workItem: detail.workItemId ? {
+                                        ...detail.workItemId.toObject(),
+                                        unit: detail.workItemId.unitId,
+                                        rates: detail.workItemId.rates
+                                    } : null
+                                };
+                            } catch (error) {
+                                console.error('Error processing activity detail:', error);
+                                return null;
+                            }
+                        }).filter(Boolean),
+                        equipmentLogs: equipmentLogs.map(log => {
+                            if (!log) return null;
+                            try {
+                                return {
+                                    id: log._id,
+                                    equipmentId: log.equipmentId,
+                                    equipment: log.equipmentId,
+                                    fuelIn: log.fuelIn,
+                                    fuelRemaining: log.fuelRemaining,
+                                    workingHour: log.workingHour,
+                                    hourlyRate: log.hourlyRate,
+                                    fuelPrice: latestFuelPrice ? latestFuelPrice.pricePerLiter : 0,
+                                    isBrokenReported: log.isBrokenReported,
+                                    brokenDescription: log.brokenDescription,
+                                    remarks: log.remarks
+                                };
+                            } catch (error) {
+                                console.error('Error processing equipment log:', error);
+                                return null;
+                            }
+                        }).filter(Boolean),
+                        manpowerLogs: manpowerLogs.filter(Boolean),
+                        materialUsageLogs: materialUsageLogs.filter(Boolean),
+                        otherCosts: otherCosts.filter(Boolean),
+                        spkDetail: da.spkId,
+                        userDetail: da.createdBy,
+                        createdAt: da.createdAt,
+                        updatedAt: da.updatedAt
+                    };
+                })
+            );
+
+            return result;
+        } catch (error) {
+            console.error('Error in getLaporanByArea:', error);
+            throw new Error('Terjadi kesalahan saat mengambil laporan berdasarkan area');
+        }
     }
 };
 
