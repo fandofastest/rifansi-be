@@ -95,6 +95,7 @@ const typeDefs = gql`
     contractId: ID!
     equipmentId: Int!
     rentalRate: Float!
+    rentalRatePerDay: Float!
     contract: Contract
   }
 
@@ -275,6 +276,7 @@ const typeDefs = gql`
     fuelRemaining: Float
     workingHour: Float
     hourlyRate: Float
+    rentalRatePerDay: Float
     fuelPrice: Float
     isBrokenReported: Boolean!
     remarks: String
@@ -1229,6 +1231,7 @@ const typeDefs = gql`
     fuelRemaining: Float
     workingHour: Float
     hourlyRate: Float
+    rentalRatePerDay: Float
     isBrokenReported: Boolean
     brokenDescription: String
     remarks: String
@@ -1569,6 +1572,7 @@ const typeDefs = gql`
     equipment: Equipment!
     workingHours: Float!
     hourlyRate: Float!
+    rentalRatePerDay: Float!
     fuelUsed: Float!
     fuelPrice: Float!
     cost: Float!

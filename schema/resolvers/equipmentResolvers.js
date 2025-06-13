@@ -393,6 +393,24 @@ const EquipmentResolvers = {
 const EquipmentContractResolvers = {
     contract: async (parent) => {
         return Contract.findById(parent.contractId);
+    },
+    rentalRatePerDay: (parent) => {
+        // Ambil rentalRate dari contract ini
+        const rentalRate = parent.rentalRate || 0;
+        
+        // Hitung jumlah hari dalam bulan sekarang
+        const currentDate = new Date();
+        const currentYear = currentDate.getFullYear();
+        const currentMonth = currentDate.getMonth(); // 0-based (0 = January)
+        
+        // Buat tanggal untuk hari terakhir bulan ini
+        const lastDayOfMonth = new Date(currentYear, currentMonth + 1, 0);
+        const daysInCurrentMonth = lastDayOfMonth.getDate();
+        
+        // Hitung rental rate per hari
+        const rentalRatePerDay = rentalRate / daysInCurrentMonth;
+        
+        return Math.round(rentalRatePerDay * 100) / 100; // Round to 2 decimal places
     }
 };
 

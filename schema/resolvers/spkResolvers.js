@@ -387,8 +387,81 @@ const Query = {
             return acc;
         }, {});
 
-        // Format daily activities with their work items and costs
-        const formattedDailyActivities = dailyActivities.map(da => {
+        // Jika belum ada daily activities, buat satu entry default dengan work items dari SPK
+        let formattedDailyActivities = [];
+        
+        if (dailyActivities.length === 0) {
+            // Buat default daily activity dengan semua work items dari SPK
+            const defaultWorkItems = spk.workItems.map(spkWorkItem => {
+                const workItemData = spkWorkItem.workItemId;
+                if (!workItemData) return null;
+                
+                const boqVolume = {
+                    nr: spkWorkItem.boqVolume?.nr || 0,
+                    r: spkWorkItem.boqVolume?.r || 0
+                };
+                
+                return {
+                    id: workItemData._id?.toString() || workItemData.toString(),
+                    name: workItemData.name || '',
+                    description: workItemData.description || '',
+                    categoryId: workItemData.categoryId?._id?.toString() || workItemData.categoryId?.toString() || null,
+                    subCategoryId: workItemData.subCategoryId?._id?.toString() || workItemData.subCategoryId?.toString() || null,
+                    unitId: workItemData.unitId?._id?.toString() || workItemData.unitId?.toString() || null,
+                    category: workItemData.categoryId ? {
+                        id: workItemData.categoryId._id?.toString() || workItemData.categoryId.toString(),
+                        name: workItemData.categoryId.name || '',
+                        code: workItemData.categoryId.code || ''
+                    } : null,
+                    subCategory: workItemData.subCategoryId ? {
+                        id: workItemData.subCategoryId._id?.toString() || workItemData.subCategoryId.toString(),
+                        name: workItemData.subCategoryId.name || ''
+                    } : null,
+                    unit: workItemData.unitId ? {
+                        id: workItemData.unitId._id?.toString() || workItemData.unitId.toString(),
+                        name: workItemData.unitId.name || '',
+                        code: workItemData.unitId.code || ''
+                    } : null,
+                    rates: {
+                        nr: {
+                            rate: workItemData.rates?.nr?.rate ?? 0,
+                            description: workItemData.rates?.nr?.description ?? 'Non-remote rate'
+                        },
+                        r: {
+                            rate: workItemData.rates?.r?.rate ?? 0,
+                            description: workItemData.rates?.r?.description ?? 'Remote rate'
+                        }
+                    },
+                    boqVolume,
+                    actualQuantity: { nr: 0, r: 0 },
+                    lastUpdatedAt: null,
+                    dailyProgress: { nr: 0, r: 0 },
+                    progressAchieved: { nr: 0, r: 0 },
+                    dailyCost: { nr: 0, r: 0 }
+                };
+            }).filter(Boolean);
+            
+            formattedDailyActivities = [{
+                id: 'no-activity',
+                date: new Date().toISOString(),
+                location: '',
+                weather: '',
+                status: 'No Activity',
+                workStartTime: '',
+                workEndTime: '',
+                createdBy: '',
+                closingRemarks: '',
+                workItems: defaultWorkItems,
+                costs: {
+                    materials: { totalCost: 0, items: [] },
+                    manpower: { totalCost: 0, items: [] },
+                    equipment: { totalCost: 0, items: [] },
+                    otherCosts: { totalCost: 0, items: [] }
+                }
+            }];
+        } else {
+            // Format daily activities with their work items and costs
+            formattedDailyActivities = dailyActivities.map(da => {
             if (!da || !da._id) return null;
             const daId = da._id.toString();
             const activityDetails = activityDetailsByDailyActivity[daId] || [];
@@ -522,6 +595,7 @@ const Query = {
                             } : null,
                             workingHours: log.workingHour || 0,
                             hourlyRate: log.hourlyRate || 0,
+                            rentalRatePerDay: log.rentalRatePerDay || 0,
                             fuelUsed: (log.fuelIn - log.fuelRemaining) || 0,
                             fuelPrice: log.fuelPrice || 0,
                             cost: ((log.fuelIn - log.fuelRemaining) * log.fuelPrice) + (log.workingHour * log.hourlyRate)
@@ -557,6 +631,7 @@ const Query = {
                 costs
             };
         }).filter(Boolean);
+        }
 
         // Calculate total costs
         const totalCosts = formattedDailyActivities.reduce((total, da) => {

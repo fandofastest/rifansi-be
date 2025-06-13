@@ -31,6 +31,11 @@ const equipmentLogSchema = new mongoose.Schema({
     min: 0,
     default: 0
   },
+  rentalRatePerDay: {
+    type: Number,
+    min: 0,
+    default: 0
+  },
   fuelPrice: {
     type: Number,
     min: 0,
