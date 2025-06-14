@@ -12,15 +12,16 @@ const {
     SPK,
     WorkItem,
     User,
-    FuelPrice,
-    ApproverSetting
+    FuelPrice
 } = require('../../models');
 
 const {
     calculateDailyPhysicalProgress,
     calculateDailyFinancialProgress,
     calculateDailyCosts,
-    calculateProgressPercentage
+    calculateProgressPercentage,
+    calculateBOQProgressPercentage,
+    calculateBudgetUsagePercentage
 } = require('./helpers');
 
 const Query = {
@@ -64,605 +65,58 @@ const Query = {
             .populate('createdBy');
     },
 
-    dailyActivitiesWithDetailsByUser: async (_, { userId }, { user }) => {
+
+
+    // Consolidated function to get daily activities with details
+    getDailyActivityWithDetails: async (_, { areaId, userId, activityId, startDate, endDate }, { user }) => {
         if (!user) throw new Error('Not authenticated');
 
-        const dailyActivities = await DailyActivity.find({ createdBy: userId })
-            .populate('spkId')
-            .populate('createdBy')
-            .populate('areaId');
-
-        const result = await Promise.all(
-            dailyActivities.map(async (da) => {
-                const activityDetails = await ActivityDetail.find({ dailyActivityId: da._id })
-                    .populate('workItemId');
-
-                const equipmentLogs = await EquipmentLog.find({ dailyActivityId: da._id })
-                    .populate('equipmentId');
-
-                const manpowerLogs = await ManpowerLog.find({
-                    dailyActivityId: da._id,
-                    isActive: true
-                }).populate('role');
-
-                const materialUsageLogs = await MaterialUsageLog.find({ dailyActivityId: da._id })
-                    .populate('materialId');
-
-                const otherCosts = await OtherCost.find({ dailyActivityId: da._id });
-
-                let progressPercentage = 0;
-                let targetHarian = 0;
-                let totalBiayaItemwork = 0;
-                let totalHariKerja = 1;
-                let totalBudget = 0;
-                if (da.spkId) {
-                    // Hitung total hari kerja dari startDate dan endDate SPK
-                    const start = da.spkId.startDate ? new Date(da.spkId.startDate) : null;
-                    const end = da.spkId.endDate ? new Date(da.spkId.endDate) : null;
-                    if (start && end) {
-                        totalHariKerja = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1);
-                    } else {
-                        totalHariKerja = 1;
-                    }
-                    totalBudget = da.spkId.budget || 0;
-                    targetHarian = totalBudget / totalHariKerja;
-                }
-                if (activityDetails.length > 0) {
-                    totalBiayaItemwork = activityDetails.reduce((sum, detail) => {
-                        let biaya = 0;
-                        if (detail.workItemId && detail.actualQuantity) {
-                            const rates = detail.workItemId.rates || { nr: { rate: 0 }, r: { rate: 0 } };
-                            const qtyNr = detail.actualQuantity.nr || 0;
-                            const qtyR = detail.actualQuantity.r || 0;
-                            const rateNr = rates.nr?.rate || 0;
-                            const rateR = rates.r?.rate || 0;
-                            biaya = (qtyNr * rateNr) + (qtyR * rateR);
-                            if (qtyNr > 0 || qtyR > 0) {
-                                // Log detail hanya jika actual > 0
-                                console.log('[Itemwork]',
-                                    'Nama:', detail.workItemId.name,
-                                    '| Qty NR:', qtyNr,
-                                    '| Rate NR:', rateNr,
-                                    '| Qty R:', qtyR,
-                                    '| Rate R:', rateR,
-                                    '| Biaya:', biaya,
-                                    '| Unit:', detail.workItemId.unitId?.name || '-'
-                                );
-                            }
-                        }
-                        return sum + biaya;
-                    }, 0);
-                }
-                if (targetHarian > 0) {
-                    console.log('targetHarian:', targetHarian);
-                    console.log('totalBiayaItemwork:', totalBiayaItemwork);
-                    progressPercentage = (totalBiayaItemwork / targetHarian) * 100;
-                } else {
-                    progressPercentage = 0;
-                }
-
-                return {
-                    id: da._id,
-                    date: da.date,
-                    location: da.areaId ? da.areaId.name : null,
-                    weather: da.weather,
-                    status: da.status,
-                    workStartTime: da.workStartTime,
-                    workEndTime: da.workEndTime,
-                    startImages: da.startImages || [],
-                    finishImages: da.finishImages || [],
-                    closingRemarks: da.closingRemarks,
-                    progressPercentage,
-                    activityDetails,
-                    equipmentLogs,
-                    manpowerLogs,
-                    materialUsageLogs,
-                    otherCosts,
-                    spkDetail: da.spkId,
-                    userDetail: da.createdBy,
-                    createdAt: da.createdAt,
-                    updatedAt: da.updatedAt
-                };
-            })
-        );
-
-        return result;
-    },
-
-    dailyActivitiesWithDetailsByUserAndApprover: async (_, { userId }, { user }) => {
-        if (!user) throw new Error('Not authenticated');
-
-        const dailyActivities = await DailyActivity.find({ createdBy: userId })
-            .populate('spkId')
-            .populate('createdBy');
-
-        const result = await Promise.all(
-            dailyActivities.map(async (da) => {
-                const activityDetails = await ActivityDetail.find({ dailyActivityId: da._id })
-                    .populate('workItemId');
-
-                const equipmentLogs = await EquipmentLog.find({ dailyActivityId: da._id })
-                    .populate('equipmentId');
-
-                const manpowerLogs = await ManpowerLog.find({
-                    dailyActivityId: da._id,
-                    isActive: true
-                }).populate('role');
-
-                const materialUsageLogs = await MaterialUsageLog.find({ dailyActivityId: da._id })
-                    .populate('materialId');
-
-                const otherCosts = await OtherCost.find({ dailyActivityId: da._id });
-
-                let progressPercentage = 0;
-                let targetHarian = 0;
-                let totalBiayaItemwork = 0;
-                let totalHariKerja = 1;
-                let totalBudget = 0;
-                if (da.spkId) {
-                    // Hitung total hari kerja dari startDate dan endDate SPK
-                    const start = da.spkId.startDate ? new Date(da.spkId.startDate) : null;
-                    const end = da.spkId.endDate ? new Date(da.spkId.endDate) : null;
-                    if (start && end) {
-                        totalHariKerja = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1);
-                    } else {
-                        totalHariKerja = 1;
-                    }
-                    totalBudget = da.spkId.budget || 0;
-                    targetHarian = totalBudget / totalHariKerja;
-                }
-                if (activityDetails.length > 0) {
-                    totalBiayaItemwork = activityDetails.reduce((sum, detail) => {
-                        let biaya = 0;
-                        if (detail.workItemId && detail.actualQuantity) {
-                            const rates = detail.workItemId.rates || { nr: { rate: 0 }, r: { rate: 0 } };
-                            const qtyNr = detail.actualQuantity.nr || 0;
-                            const qtyR = detail.actualQuantity.r || 0;
-                            const rateNr = rates.nr?.rate || 0;
-                            const rateR = rates.r?.rate || 0;
-                            biaya = (qtyNr * rateNr) + (qtyR * rateR);
-                            if (qtyNr > 0 || qtyR > 0) {
-                                // Log detail hanya jika actual > 0
-                                console.log('[Itemwork]',
-                                    'Nama:', detail.workItemId.name,
-                                    '| Qty NR:', qtyNr,
-                                    '| Rate NR:', rateNr,
-                                    '| Qty R:', qtyR,
-                                    '| Rate R:', rateR,
-                                    '| Biaya:', biaya,
-                                    '| Unit:', detail.workItemId.unitId?.name || '-'
-                                );
-                            }
-                        }
-                        return sum + biaya;
-                    }, 0);
-                }
-                if (targetHarian > 0) {
-                    console.log('targetHarian:', targetHarian);
-                    console.log('totalBiayaItemwork:', totalBiayaItemwork);
-                    progressPercentage = (totalBiayaItemwork / targetHarian) * 100;
-                } else {
-                    progressPercentage = 0;
-                }
-
-                return {
-                    id: da._id,
-                    date: da.date,
-                    location: da.location,
-                    weather: da.weather,
-                    status: da.status,
-                    workStartTime: da.workStartTime,
-                    workEndTime: da.workEndTime,
-                    startImages: da.startImages || [],
-                    finishImages: da.finishImages || [],
-                    closingRemarks: da.closingRemarks,
-                    progressPercentage,
-                    activityDetails,
-                    equipmentLogs,
-                    manpowerLogs,
-                    materialUsageLogs,
-                    otherCosts,
-                    spkDetail: da.spkId,
-                    userDetail: da.createdBy,
-                    createdAt: da.createdAt,
-                    updatedAt: da.updatedAt
-                };
-            })
-        );
-
-        return result;
-    },
-
-    dailyActivitiesWithDetailsByUserAndApprover: async (_, { userId, approverId }, { user }) => {
-        if (!user) throw new Error('Not authenticated');
-
-        // Validasi bahwa user yang melakukan query adalah approver yang ditunjuk
-        const approverSetting = await ApproverSetting.findOne({
-            userId,
-            approverId,
-            isActive: true
-        });
-
-        if (!approverSetting) {
-            throw new Error('User tidak memiliki wewenang untuk melihat laporan ini');
-        }
-
-        // Ambil semua daily activity dengan detail lengkap
-        const dailyActivities = await DailyActivity.find({ createdBy: userId })
-            .populate('spkId')
-            .populate('contractId')
-            .populate('createdBy')
-            .populate('areaId')
-            .sort({ date: -1 });
-
-        // Populate semua relasi yang diperlukan
-        const populatedActivities = await Promise.all(dailyActivities.map(async (activity) => {
-            const activityDetails = await ActivityDetail.find({ dailyActivityId: activity._id })
-                .populate({
-                    path: 'workItemId',
-                    populate: {
-                        path: 'unitId',
-                        select: 'name code'
-                    }
-                });
-
-            const equipmentLogs = await EquipmentLog.find({ dailyActivityId: activity._id })
-                .populate('equipmentId');
-
-            const manpowerLogs = await ManpowerLog.find({ dailyActivityId: activity._id })
-                .populate('role');
-
-            const materialUsageLogs = await MaterialUsageLog.find({ dailyActivityId: activity._id })
-                .populate('materialId');
-
-            const otherCosts = await OtherCost.find({ dailyActivityId: activity._id });
-
-            // Hitung progress percentage
-            const progressPercentage = await calculateProgressPercentage(activity._id);
-
-            return {
-                ...activity.toObject(),
-                activityDetails: activityDetails.map(detail => {
-                    if (!detail || !detail.workItemId) {
-                        console.log('Detail atau workItemId null:', detail);
-                        return null;
-                    }
-                    try {
-                        return {
-                            ...detail.toObject(),
-                            workItem: detail.workItemId ? {
-                                ...detail.workItemId.toObject(),
-                                unit: detail.workItemId.unitId,
-                                rates: detail.workItemId.rates
-                            } : null
-                        };
-                    } catch (error) {
-                        console.error('Error processing activity detail:', error);
-                        return null;
-                    }
-                }).filter(Boolean), // Filter out null values
-                equipmentLogs: equipmentLogs.map(log => {
-                    if (!log) return null;
-                    try {
-                        return {
-                            id: log._id,
-                            equipmentId: log.equipmentId,
-                            equipment: log.equipmentId,
-                            fuelIn: log.fuelIn,
-                            fuelRemaining: log.fuelRemaining,
-                            workingHour: log.workingHour,
-                            hourlyRate: log.hourlyRate,
-                            rentalRatePerDay: log.rentalRatePerDay,
-                            fuelPrice: latestFuelPrice ? latestFuelPrice.pricePerLiter : 0,
-                            isBrokenReported: log.isBrokenReported,
-                            brokenDescription: log.brokenDescription,
-                            remarks: log.remarks
-                        };
-                    } catch (error) {
-                        console.error('Error processing equipment log:', error);
-                        return null;
-                    }
-                }).filter(Boolean), // Filter out null values
-                manpowerLogs: manpowerLogs.filter(Boolean),
-                materialUsageLogs: materialUsageLogs.filter(Boolean),
-                otherCosts: otherCosts.filter(Boolean),
-                progressPercentage,
-                spkDetail: activity.spkId,
-                userDetail: activity.createdBy
-            };
-        }));
-
-        return populatedActivities;
-    },
-
-    dailyActivitiesWithDetailsByApprover: async (_, { approverId }, { user }) => {
-        if (!user) throw new Error('Not authenticated');
-
-        try {
-            // Validasi format ObjectId
-            if (!approverId.match(/^[0-9a-fA-F]{24}$/)) {
-                throw new Error('ID Approver tidak valid');
-            }
-
-            // Cek apakah user adalah admin atau superadmin
-            const currentUser = await User.findById(user.userId).populate('role');
-            console.log('Current user role:', currentUser?.role?.roleCode);
-
-            const isAdmin = currentUser?.role?.roleCode === 'ADMIN' || currentUser?.role?.roleCode === 'SUPERADMIN';
-            console.log('Is admin/superadmin:', isAdmin);
-
-            if (isAdmin) {
-                console.log('User adalah admin/superadmin, mengambil semua data tanpa filter');
-                // Ambil semua daily activity tanpa filter
-                const dailyActivities = await DailyActivity.find()
-                    .populate('spkId')
-                    .populate('createdBy')
-                    .sort({ date: -1 });
-
-                console.log('Jumlah daily activities ditemukan:', dailyActivities.length);
-
-                if (dailyActivities.length === 0) {
-                    console.log('Tidak ada daily activities yang ditemukan');
-                    return [];
-                }
-
-                // Ambil harga bahan bakar terbaru
-                const latestFuelPrice = await FuelPrice.findOne()
-                    .sort({ effectiveDate: -1 });
-
-                // Populate semua relasi yang diperlukan
-                const populatedActivities = await Promise.all(dailyActivities.map(async (activity) => {
-                    const activityDetails = await ActivityDetail.find({ dailyActivityId: activity._id })
-                        .populate({
-                            path: 'workItemId',
-                            populate: {
-                                path: 'unitId',
-                                select: 'name code'
-                            }
-                        });
-
-                    const equipmentLogs = await EquipmentLog.find({ dailyActivityId: activity._id })
-                        .populate('equipmentId')
-                        .select('equipmentId fuelIn fuelRemaining workingHour hourlyRate isBrokenReported brokenDescription remarks');
-
-                    const manpowerLogs = await ManpowerLog.find({ dailyActivityId: activity._id })
-                        .populate('role');
-
-                    const materialUsageLogs = await MaterialUsageLog.find({ dailyActivityId: activity._id })
-                        .populate('materialId');
-
-                    const otherCosts = await OtherCost.find({ dailyActivityId: activity._id });
-
-                    // Hitung progress percentage
-                    const progressPercentage = await calculateProgressPercentage(activity._id);
-
-                    return {
-                        id: activity._id,
-                        date: activity.date,
-                        location: activity.location,
-                        weather: activity.weather,
-                        status: activity.status,
-                        workStartTime: activity.workStartTime,
-                        workEndTime: activity.workEndTime,
-                        startImages: activity.startImages || [],
-                        finishImages: activity.finishImages || [],
-                        closingRemarks: activity.closingRemarks,
-                        progressPercentage,
-                        activityDetails: activityDetails.map(detail => {
-                            if (!detail || !detail.workItemId) {
-                                console.log('Detail atau workItemId null:', detail);
-                                return null;
-                            }
-                            try {
-                                return {
-                                    ...detail.toObject(),
-                                    workItem: detail.workItemId ? {
-                                        ...detail.workItemId.toObject(),
-                                        unit: detail.workItemId.unitId,
-                                        rates: detail.workItemId.rates
-                                    } : null
-                                };
-                            } catch (error) {
-                                console.error('Error processing activity detail:', error);
-                                return null;
-                            }
-                        }).filter(Boolean), // Filter out null values
-                        equipmentLogs: equipmentLogs.map(log => {
-                            if (!log) return null;
-                            try {
-                                return {
-                                    id: log._id,
-                                    equipmentId: log.equipmentId,
-                                    equipment: log.equipmentId,
-                                    fuelIn: log.fuelIn,
-                                    fuelRemaining: log.fuelRemaining,
-                                    workingHour: log.workingHour,
-                                    hourlyRate: log.hourlyRate,
-                                    fuelPrice: latestFuelPrice ? latestFuelPrice.pricePerLiter : 0,
-                                    isBrokenReported: log.isBrokenReported,
-                                    brokenDescription: log.brokenDescription,
-                                    remarks: log.remarks
-                                };
-                            } catch (error) {
-                                console.error('Error processing equipment log:', error);
-                                return null;
-                            }
-                        }).filter(Boolean), // Filter out null values
-                        manpowerLogs: manpowerLogs.filter(Boolean),
-                        materialUsageLogs: materialUsageLogs.filter(Boolean),
-                        otherCosts: otherCosts.filter(Boolean),
-                        spkDetail: activity.spkId,
-                        userDetail: activity.createdBy,
-                        createdAt: activity.createdAt,
-                        updatedAt: activity.updatedAt
-                    };
-                }));
-
-                console.log('Jumlah populated activities:', populatedActivities.length);
-                return populatedActivities;
-            }
-
-            // Jika bukan admin/superadmin, cari berdasarkan approver settings
-            console.log('User bukan admin/superadmin, mencari berdasarkan approver settings');
-            const approverSettings = await ApproverSetting.find({
-                approverId,
-                isActive: true
-            });
-
-            console.log('Jumlah approver settings ditemukan:', approverSettings.length);
-
-            if (!approverSettings || approverSettings.length === 0) {
-                console.log('Tidak ada approver settings yang ditemukan');
-                return [];
-            }
-
-            // Ambil ID dari semua user yang memiliki approver tersebut
-            const userIds = approverSettings.map(setting => setting.userId);
-            console.log('User IDs yang ditemukan:', userIds);
-
-            // Ambil semua daily activity dari user-user tersebut
-            const dailyActivities = await DailyActivity.find({ createdBy: { $in: userIds } })
-                .populate('spkId')
-                .populate('createdBy')
-                .sort({ date: -1 });
-
-            console.log('Jumlah daily activities ditemukan:', dailyActivities.length);
-
-            if (dailyActivities.length === 0) {
-                console.log('Tidak ada daily activities yang ditemukan');
-                return [];
-            }
-
-            // Ambil harga bahan bakar terbaru
-            const latestFuelPrice = await FuelPrice.findOne()
-                .sort({ effectiveDate: -1 });
-
-            // Populate semua relasi yang diperlukan
-            const populatedActivities = await Promise.all(dailyActivities.map(async (activity) => {
-                const activityDetails = await ActivityDetail.find({ dailyActivityId: activity._id })
-                    .populate({
-                        path: 'workItemId',
-                        populate: {
-                            path: 'unitId',
-                            select: 'name code'
-                        }
-                    });
-
-                const equipmentLogs = await EquipmentLog.find({ dailyActivityId: activity._id })
-                    .populate('equipmentId')
-                    .select('equipmentId fuelIn fuelRemaining workingHour hourlyRate isBrokenReported brokenDescription remarks');
-
-                const manpowerLogs = await ManpowerLog.find({ dailyActivityId: activity._id })
-                    .populate('role');
-
-                const materialUsageLogs = await MaterialUsageLog.find({ dailyActivityId: activity._id })
-                    .populate('materialId');
-
-                const otherCosts = await OtherCost.find({ dailyActivityId: activity._id });
-
-                // Hitung progress percentage
-                const progressPercentage = await calculateProgressPercentage(activity._id);
-
-                return {
-                    id: activity._id,
-                    date: activity.date,
-                    location: activity.location,
-                    weather: activity.weather,
-                    status: activity.status,
-                    workStartTime: activity.workStartTime,
-                    workEndTime: activity.workEndTime,
-                    startImages: activity.startImages || [],
-                    finishImages: activity.finishImages || [],
-                    closingRemarks: activity.closingRemarks,
-                    progressPercentage,
-                    activityDetails: activityDetails.map(detail => {
-                        if (!detail || !detail.workItemId) {
-                            console.log('Detail atau workItemId null:', detail);
-                            return null;
-                        }
-                        try {
-                            return {
-                                ...detail.toObject(),
-                                workItem: detail.workItemId ? {
-                                    ...detail.workItemId.toObject(),
-                                    unit: detail.workItemId.unitId,
-                                    rates: detail.workItemId.rates
-                                } : null
-                            };
-                        } catch (error) {
-                            console.error('Error processing activity detail:', error);
-                            return null;
-                        }
-                    }).filter(Boolean), // Filter out null values
-                    equipmentLogs: equipmentLogs.map(log => {
-                        if (!log) return null;
-                        try {
-                            return {
-                                id: log._id,
-                                equipmentId: log.equipmentId,
-                                equipment: log.equipmentId,
-                                fuelIn: log.fuelIn,
-                                fuelRemaining: log.fuelRemaining,
-                                workingHour: log.workingHour,
-                                hourlyRate: log.hourlyRate,
-                                rentalRatePerDay: log.rentalRatePerDay,
-                                fuelPrice: latestFuelPrice ? latestFuelPrice.pricePerLiter : 0,
-                                isBrokenReported: log.isBrokenReported,
-                                brokenDescription: log.brokenDescription,
-                                remarks: log.remarks
-                            };
-                        } catch (error) {
-                            console.error('Error processing equipment log:', error);
-                            return null;
-                        }
-                    }).filter(Boolean), // Filter out null values
-                    manpowerLogs: manpowerLogs.filter(Boolean),
-                    materialUsageLogs: materialUsageLogs.filter(Boolean),
-                    otherCosts: otherCosts.filter(Boolean),
-                    spkDetail: activity.spkId,
-                    userDetail: activity.createdBy,
-                    createdAt: activity.createdAt,
-                    updatedAt: activity.updatedAt
-                };
-            }));
-
-            console.log('Jumlah populated activities:', populatedActivities.length);
-            return populatedActivities;
-        } catch (error) {
-            console.error('Error in dailyActivitiesWithDetailsByApprover:', error);
-            throw error;
-        }
-    },
-
-    // New query: Get reports (daily activities) by area
-    getLaporanByArea: async (_, { areaId, startDate, endDate, status }, { user }) => {
-        if (!user) throw new Error('Not authenticated');
-        
         try {
             // Build query filter
             const query = {};
-            
+
+            // Filter by activity ID if provided
+            if (activityId) {
+                query._id = activityId;
+            }
+
+            // Filter by area if provided
             if (areaId) {
                 query.areaId = areaId;
             }
-            
+
+            // Filter by user if provided
+            if (userId) {
+                query.createdBy = userId;
+            }
+
+            // Filter by date range if provided
             if (startDate || endDate) {
                 query.date = {};
                 if (startDate) query.date.$gte = new Date(startDate);
                 if (endDate) query.date.$lte = new Date(endDate);
             }
-            
-            if (status) {
-                query.status = status;
-            }
 
-            // Get daily activities by area with populated data
+            console.log('Query filter:', query);
+
+            // Get daily activities with populated data
             const dailyActivities = await DailyActivity.find(query)
                 .populate('spkId')
                 .populate('createdBy')
                 .populate('areaId')
                 .populate('approvedBy')
                 .sort({ date: -1 });
+
+            console.log('Daily activities found:', dailyActivities.length);
+
+            if (dailyActivities.length === 0) {
+                console.log('No daily activities found');
+                return [];
+            }
+
+            // Get latest fuel price for equipment calculations
+            const latestFuelPrice = await FuelPrice.findOne()
+                .sort({ effectiveDate: -1 });
 
             // Populate all related data for each activity
             const result = await Promise.all(
@@ -689,12 +143,37 @@ const Query = {
 
                     const otherCosts = await OtherCost.find({ dailyActivityId: da._id });
 
-                    // Calculate progress percentage
-                    const progressPercentage = await calculateProgressPercentage(da._id);
+                    // Calculate progress percentage: (progress_volume_hari_ini / target_harian) * 100
+                    let progressPercentage = 0;
+                    if (da.spkId && da.spkId.workItems && da.spkId.startDate && da.spkId.endDate) {
+                        // Calculate total working days
+                        const startDate = new Date(da.spkId.startDate);
+                        const endDate = new Date(da.spkId.endDate);
+                        const totalWorkDays = Math.max(1, Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1);
 
-                    // Get latest fuel price for equipment calculations
-                    const latestFuelPrice = await FuelPrice.findOne()
-                        .sort({ effectiveDate: -1 });
+                        // Calculate total BOQ volume from SPK
+                        const totalBOQVolume = da.spkId.workItems.reduce((total, item) => {
+                            const nr = item.boqVolume?.nr || 0;
+                            const r = item.boqVolume?.r || 0;
+                            return total + nr + r;
+                        }, 0);
+
+                        // Calculate daily target
+                        const targetHarian = totalBOQVolume / totalWorkDays;
+
+                        // Calculate actual volume for this day
+                        const progressVolumeHariIni = activityDetails.reduce((total, detail) => {
+                            const nr = detail.actualQuantity?.nr || 0;
+                            const r = detail.actualQuantity?.r || 0;
+                            return total + nr + r;
+                        }, 0);
+
+                        // Calculate percentage: (progress_volume_hari_ini / target_harian) * 100
+                        progressPercentage = targetHarian > 0 ? (progressVolumeHariIni / targetHarian) * 100 : 0;
+                        progressPercentage = Math.round(progressPercentage * 100) / 100; // Round to 2 decimal places
+                    }
+
+                    const budgetUsage = calculateBudgetUsagePercentage(activityDetails, da.spkId);
 
                     return {
                         id: da._id,
@@ -704,6 +183,7 @@ const Query = {
                             name: da.areaId.name,
                             location: da.areaId.location
                         } : null,
+                        location: da.location,
                         weather: da.weather,
                         status: da.status,
                         workStartTime: da.workStartTime,
@@ -716,6 +196,7 @@ const Query = {
                         approvedAt: da.approvedAt,
                         rejectionReason: da.rejectionReason,
                         progressPercentage,
+                        budgetUsage,
                         activityDetails: activityDetails.map(detail => {
                             if (!detail || !detail.workItemId) return null;
                             try {
@@ -765,10 +246,11 @@ const Query = {
                 })
             );
 
+            console.log('Processed activities:', result.length);
             return result;
         } catch (error) {
-            console.error('Error in getLaporanByArea:', error);
-            throw new Error('Terjadi kesalahan saat mengambil laporan berdasarkan area');
+            console.error('Error in getDailyActivityWithDetails:', error);
+            throw new Error('Terjadi kesalahan saat mengambil data laporan harian');
         }
     }
 };
@@ -795,7 +277,7 @@ const Mutation = {
         if (!user) throw new Error('Not authenticated');
 
         try {
-            // Cek apakah user adalah admin atau superadmin
+            // Check if user is admin or superadmin
             const currentUser = await User.findById(user.userId).populate('role');
             const isAdmin = currentUser?.role?.roleCode === 'ADMIN' || currentUser?.role?.roleCode === 'SUPERADMIN';
 
@@ -803,27 +285,27 @@ const Mutation = {
                 throw new Error('Anda tidak memiliki wewenang untuk menghapus laporan harian');
             }
 
-            // Cek apakah daily activity ada
+            // Check if daily activity exists
             const dailyActivity = await DailyActivity.findById(id);
             if (!dailyActivity) {
                 throw new Error('Laporan harian tidak ditemukan');
             }
 
-            // Hapus semua data terkait
+            // Delete all related data
             await Promise.all([
-                // Hapus activity details
+                // Delete activity details
                 ActivityDetail.deleteMany({ dailyActivityId: id }),
-                // Hapus equipment logs
+                // Delete equipment logs
                 EquipmentLog.deleteMany({ dailyActivityId: id }),
-                // Hapus manpower logs
+                // Delete manpower logs
                 ManpowerLog.deleteMany({ dailyActivityId: id }),
-                // Hapus material usage logs
+                // Delete material usage logs
                 MaterialUsageLog.deleteMany({ dailyActivityId: id }),
-                // Hapus other costs
+                // Delete other costs
                 OtherCost.deleteMany({ dailyActivityId: id })
             ]);
 
-            // Hapus daily activity
+            // Delete daily activity
             await DailyActivity.findByIdAndDelete(id);
 
             return {
@@ -913,8 +395,8 @@ const Mutation = {
                         fuelIn: log.fuelIn,
                         fuelRemaining: log.fuelRemaining,
                         workingHour: log.workingHour,
-                        hourlyRate: log.hourlyRate || 0,
-                        rentalRatePerDay: log.rentalRatePerDay || 0,
+                        hourlyRate: 0,  // Set hourlyRate to 0
+                        rentalRatePerDay: log.hourlyRate || 0,  // Copy hourlyRate input to rentalRatePerDay
                         fuelPrice: latestFuelPrice ? latestFuelPrice.pricePerLiter : 0,
                         isBrokenReported: log.isBrokenReported || false,
                         brokenDescription: log.brokenDescription,
@@ -981,7 +463,38 @@ const Mutation = {
             };
 
             const costs = calculateDailyCosts(equipmentLogs, manpowerLogs, materialUsageLogs, otherCosts);
-            const overallProgressPercentage = calculateProgressPercentage(activityDetails, spk);
+
+            // Calculate progress percentage: (progress_volume_hari_ini / target_harian) * 100
+            let overallProgressPercentage = 0;
+            if (spk && spk.workItems && spk.startDate && spk.endDate) {
+                // Calculate total working days
+                const startDate = new Date(spk.startDate);
+                const endDate = new Date(spk.endDate);
+                const totalWorkDays = Math.max(1, Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1);
+
+                // Calculate total BOQ volume from SPK
+                const totalBOQVolume = spk.workItems.reduce((total, item) => {
+                    const nr = item.boqVolume?.nr || 0;
+                    const r = item.boqVolume?.r || 0;
+                    return total + nr + r;
+                }, 0);
+
+                // Calculate daily target
+                const targetHarian = totalBOQVolume / totalWorkDays;
+
+                // Calculate actual volume for this day
+                const progressVolumeHariIni = activityDetails.reduce((total, detail) => {
+                    const nr = detail.actualQuantity?.nr || 0;
+                    const r = detail.actualQuantity?.r || 0;
+                    return total + nr + r;
+                }, 0);
+
+                // Calculate percentage: (progress_volume_hari_ini / target_harian) * 100
+                overallProgressPercentage = targetHarian > 0 ? (progressVolumeHariIni / targetHarian) * 100 : 0;
+                overallProgressPercentage = Math.round(overallProgressPercentage * 100) / 100; // Round to 2 decimal places
+            }
+
+            const overallBudgetUsage = calculateBudgetUsagePercentage(activityDetails, spk);
 
             return {
                 id: dailyActivity._id,
@@ -996,6 +509,7 @@ const Mutation = {
                 progress,
                 costs,
                 progressPercentage: overallProgressPercentage,
+                budgetUsage: overallBudgetUsage,
                 activityDetails: activityDetails.map(detail => ({
                     id: detail._id,
                     dailyActivityId: detail.dailyActivityId,
@@ -1047,82 +561,52 @@ const Mutation = {
         }
     },
 
-    updateApproval: async (_, { id, status, remarks }, { user }) => {
-        if (!user) throw new Error('Not authenticated');
-
-        const dailyActivity = await DailyActivity.findById(id);
-        if (!dailyActivity) throw new Error('DailyActivity not found');
-
-        // Cek apakah user adalah approver yang ditunjuk
-        const approverSetting = await ApproverSetting.findOne({
-            userId: dailyActivity.createdBy,
-            approverId: user.userId,
-            isActive: true
-        });
-
-        if (status === 'Approved' && !approverSetting) {
-            throw new Error('User tidak memiliki wewenang untuk menyetujui laporan ini');
-        }
-
-        // Update status dan riwayat
-        dailyActivity.status = status;
-        dailyActivity.isApproved = status === 'Approved';
-        dailyActivity.approvedBy = status === 'Approved' ? user.userId : null;
-        dailyActivity.approvedAt = status === 'Approved' ? new Date() : null;
-        dailyActivity.rejectionReason = status === 'Rejected' ? remarks : null;
-
-        // Tambahkan ke riwayat persetujuan
-        dailyActivity.approvalHistory.push({
-            status,
-            remarks,
-            updatedBy: user.userId,
-            updatedAt: new Date()
-        });
-
-        // Update last updated
-        dailyActivity.lastUpdatedBy = user.userId;
-        dailyActivity.lastUpdatedAt = new Date();
-
-        await dailyActivity.save();
-        return dailyActivity;
-    },
-
+    // Updated approval system based on area instead of approver settings
     approveDailyReport: async (_, { id, status, remarks }, { user }) => {
         if (!user) throw new Error('Not authenticated');
 
         try {
-            // Validasi status
+            // Validate status
             if (!['Approved', 'Rejected'].includes(status)) {
                 throw new Error('Status harus berupa "Approved" atau "Rejected"');
             }
 
-            const dailyActivity = await DailyActivity.findById(id);
+            const dailyActivity = await DailyActivity.findById(id).populate('areaId');
             if (!dailyActivity) {
                 throw new Error('DailyActivity tidak ditemukan');
             }
 
-            // Cek apakah user adalah admin atau superadmin
-            const currentUser = await User.findById(user.userId).populate('role');
+            // Check if user is admin or superadmin
+            const currentUser = await User.findById(user.userId).populate(['role', 'area']);
             if (!currentUser) {
                 throw new Error('User tidak ditemukan');
             }
 
             const isAdmin = currentUser.role && (currentUser.role.roleCode === 'ADMIN' || currentUser.role.roleCode === 'SUPERADMIN');
 
-            // Jika bukan admin/superadmin, cek apakah user adalah approver yang ditunjuk
+            // If not admin/superadmin, check if user is in the same area as the daily activity
             if (!isAdmin) {
-                const approverSetting = await ApproverSetting.findOne({
-                    userId: dailyActivity.createdBy,
-                    approverId: user.userId,
-                    isActive: true
-                });
+                // Check if user has the same area as the daily activity
+                if (!currentUser.area || !dailyActivity.areaId) {
+                    throw new Error('User tidak memiliki area yang ditentukan atau laporan tidak memiliki area');
+                }
 
-                if (!approverSetting) {
-                    throw new Error('User tidak memiliki wewenang untuk menyetujui laporan ini');
+                if (currentUser.area._id.toString() !== dailyActivity.areaId._id.toString()) {
+                    throw new Error('User hanya dapat menyetujui laporan dari area yang sama');
+                }
+
+                // Additional check: user should have supervisor or mandor role to approve in the same area
+                const canApprove = currentUser.role && (
+                    currentUser.role.roleCode === 'SUPERVISOR' ||
+                    currentUser.role.roleCode === 'MANDOR'
+                );
+
+                if (!canApprove) {
+                    throw new Error('User tidak memiliki wewenang untuk menyetujui laporan');
                 }
             }
 
-            // Update status dan riwayat
+            // Update status and history
             dailyActivity.status = status;
             dailyActivity.isApproved = status === 'Approved';
             dailyActivity.approvedBy = status === 'Approved' ? user.userId : null;
@@ -1131,7 +615,7 @@ const Mutation = {
             dailyActivity.lastUpdatedBy = user.userId;
             dailyActivity.lastUpdatedAt = new Date();
 
-            // Tambahkan ke riwayat persetujuan
+            // Add to approval history
             if (!dailyActivity.approvalHistory) {
                 dailyActivity.approvalHistory = [];
             }
@@ -1145,12 +629,13 @@ const Mutation = {
 
             await dailyActivity.save();
 
-            // Populate relasi yang diperlukan
+            // Populate required relations
             const populatedActivity = await DailyActivity.findById(dailyActivity._id)
                 .populate('spkId')
                 .populate('createdBy')
                 .populate('approvedBy')
                 .populate('lastUpdatedBy')
+                .populate('areaId')
                 .populate({
                     path: 'approvalHistory.updatedBy',
                     model: 'User'

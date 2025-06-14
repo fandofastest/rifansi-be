@@ -5,7 +5,7 @@ const Query = {
     equipmentRepairReports: async (_, { status, equipmentId, reportedBy }, { user }) => {
         if (!user) throw new Error('Not authenticated');
 
-        const query = { isActive: true };
+        const query = { isActive: true, equipmentId: { $ne: null } };
         if (status) query.status = status;
         if (equipmentId) query.equipmentId = equipmentId;
         if (reportedBy) query.reportedBy = reportedBy;
@@ -16,13 +16,16 @@ const Query = {
             query.reportedBy = user.userId;
         }
 
-        return EquipmentRepairReport.find(query)
+        const reports = await EquipmentRepairReport.find(query)
             .populate('equipmentId')
             .populate('reportedBy')
             .populate('reviewedBy')
             .populate('location')
             .populate('statusHistory.changedBy')
             .sort({ reportDate: -1 });
+
+        // Filter out reports where equipment population failed
+        return reports.filter(report => report.equipmentId != null);
     },
 
     equipmentRepairReport: async (_, { id }, { user }) => {
@@ -49,9 +52,9 @@ const Query = {
     equipmentRepairReportsByEquipment: async (_, { equipmentId }, { user }) => {
         if (!user) throw new Error('Not authenticated');
 
-        return EquipmentRepairReport.find({ 
-            equipmentId, 
-            isActive: true 
+        return EquipmentRepairReport.find({
+            equipmentId,
+            isActive: true
         })
             .populate('equipmentId')
             .populate('reportedBy')
@@ -66,14 +69,14 @@ const Query = {
         // User hanya bisa melihat laporan mereka sendiri kecuali admin
         const currentUser = await User.findById(user.userId).populate('role');
         const isAdmin = ['ADMIN', 'SUPERADMIN'].includes(currentUser.role.roleCode);
-        
+
         if (!isAdmin && reportedBy !== user.userId) {
             throw new Error('Unauthorized to view reports from other users');
         }
 
-        return EquipmentRepairReport.find({ 
-            reportedBy, 
-            isActive: true 
+        return EquipmentRepairReport.find({
+            reportedBy,
+            isActive: true
         })
             .populate('equipmentId')
             .populate('reportedBy')
@@ -85,22 +88,35 @@ const Query = {
     pendingRepairReports: async (_, __, { user }) => {
         if (!user) throw new Error('Not authenticated');
 
-        // Hanya admin yang bisa melihat pending reports
-        const currentUser = await User.findById(user.userId).populate('role');
+        const currentUser = await User.findById(user.userId).populate(['role', 'area']);
         const isAdmin = ['ADMIN', 'SUPERADMIN'].includes(currentUser.role.roleCode);
-        
-        if (!isAdmin) {
-            throw new Error('Only admin can view pending repair reports');
+        const isSupervisor = currentUser.role.roleCode === 'SUPERVISOR';
+
+        if (!isAdmin && !isSupervisor) {
+            throw new Error('Only admin or supervisor can view pending repair reports');
         }
 
-        return EquipmentRepairReport.find({ 
-            status: 'PENDING', 
-            isActive: true 
-        })
+        let query = {
+            status: 'PENDING',
+            isActive: true,
+            equipmentId: { $ne: null }
+        };
+
+        // If supervisor, only show reports from their area
+        if (isSupervisor && !isAdmin) {
+            if (!currentUser.area) {
+                throw new Error('Supervisor area not defined');
+            }
+            query.location = currentUser.area._id;
+        }
+
+        const reports = await EquipmentRepairReport.find(query)
             .populate('equipmentId')
             .populate('reportedBy')
             .populate('location')
             .sort({ reportDate: -1 });
+
+        return reports.filter(report => report.equipmentId != null);
     },
 
     equipmentRepairReportsByCreator: async (_, { createdBy }, { user }) => {
@@ -112,14 +128,15 @@ const Query = {
         // User hanya bisa melihat laporan mereka sendiri kecuali admin
         const currentUser = await User.findById(user.userId).populate('role');
         const isAdmin = ['ADMIN', 'SUPERADMIN'].includes(currentUser.role.roleCode);
-        
+
         if (!isAdmin && targetUserId !== user.userId) {
             throw new Error('Unauthorized to view reports from other users');
         }
 
-        return EquipmentRepairReport.find({ 
-            reportedBy: targetUserId, 
-            isActive: true 
+        const reports = await EquipmentRepairReport.find({
+            reportedBy: targetUserId,
+            isActive: true,
+            equipmentId: { $ne: null }
         })
             .populate('equipmentId')
             .populate('reportedBy')
@@ -127,14 +144,17 @@ const Query = {
             .populate('location')
             .populate('statusHistory.changedBy')
             .sort({ reportDate: -1 });
+
+        return reports.filter(report => report.equipmentId != null);
     },
 
     myEquipmentRepairReports: async (_, __, { user }) => {
         if (!user) throw new Error('Not authenticated');
 
-        return EquipmentRepairReport.find({ 
-            reportedBy: user.userId, 
-            isActive: true 
+        const reports = await EquipmentRepairReport.find({
+            reportedBy: user.userId,
+            isActive: true,
+            equipmentId: { $ne: null } // Filter out reports with null equipmentId
         })
             .populate('equipmentId')
             .populate('reportedBy')
@@ -142,6 +162,9 @@ const Query = {
             .populate('location')
             .populate('statusHistory.changedBy')
             .sort({ reportDate: -1 });
+
+        // Filter out reports where equipment population failed (equipment was deleted)
+        return reports.filter(report => report.equipmentId != null);
     }
 };
 
@@ -210,19 +233,33 @@ const Mutation = {
     reviewEquipmentRepairReport: async (_, { id, input }, { user }) => {
         if (!user) throw new Error('Not authenticated');
 
-        // Hanya admin yang bisa review
-        const currentUser = await User.findById(user.userId).populate('role');
-        const isAdmin = ['ADMIN', 'SUPERADMIN'].includes(currentUser.role.roleCode);
-        
-        if (!isAdmin) {
-            throw new Error('Only admin can review repair reports');
-        }
-
-        const report = await EquipmentRepairReport.findById(id);
+        const report = await EquipmentRepairReport.findById(id).populate('location');
         if (!report) throw new Error('Report not found');
 
         if (report.status !== 'PENDING') {
             throw new Error('Report has already been reviewed');
+        }
+
+        // Check authorization: admin, superadmin, or supervisor in same area
+        const currentUser = await User.findById(user.userId).populate(['role', 'area']);
+        const isAdmin = ['ADMIN', 'SUPERADMIN'].includes(currentUser.role.roleCode);
+
+        if (!isAdmin) {
+            // Check if user is supervisor in the same area as the report
+            const isSupervisor = currentUser.role.roleCode === 'SUPERVISOR';
+
+            if (!isSupervisor) {
+                throw new Error('Only admin or supervisor can review repair reports');
+            }
+
+            // Check if supervisor is in the same area as the repair report
+            if (!currentUser.area || !report.location) {
+                throw new Error('User area or report location not defined');
+            }
+
+            if (currentUser.area._id.toString() !== report.location._id.toString()) {
+                throw new Error('Supervisor can only review repair reports from their assigned area');
+            }
         }
 
         // Update report
@@ -260,19 +297,33 @@ const Mutation = {
     updateRepairProgress: async (_, { id, input }, { user }) => {
         if (!user) throw new Error('Not authenticated');
 
-        // Hanya admin yang bisa update progress
-        const currentUser = await User.findById(user.userId).populate('role');
-        const isAdmin = ['ADMIN', 'SUPERADMIN'].includes(currentUser.role.roleCode);
-        
-        if (!isAdmin) {
-            throw new Error('Only admin can update repair progress');
-        }
-
-        const report = await EquipmentRepairReport.findById(id);
+        const report = await EquipmentRepairReport.findById(id).populate('location');
         if (!report) throw new Error('Report not found');
 
         if (!['APPROVED', 'IN_REPAIR'].includes(report.status)) {
             throw new Error('Cannot update progress for this report status');
+        }
+
+        // Check authorization: admin, superadmin, or supervisor in same area
+        const currentUser = await User.findById(user.userId).populate(['role', 'area']);
+        const isAdmin = ['ADMIN', 'SUPERADMIN'].includes(currentUser.role.roleCode);
+
+        if (!isAdmin) {
+            // Check if user is supervisor in the same area as the report
+            const isSupervisor = currentUser.role.roleCode === 'SUPERVISOR';
+
+            if (!isSupervisor) {
+                throw new Error('Only admin or supervisor can update repair progress');
+            }
+
+            // Check if supervisor is in the same area as the repair report
+            if (!currentUser.area || !report.location) {
+                throw new Error('User area or report location not defined');
+            }
+
+            if (currentUser.area._id.toString() !== report.location._id.toString()) {
+                throw new Error('Supervisor can only update repair progress for reports from their assigned area');
+            }
         }
 
         const updatedReport = await EquipmentRepairReport.findByIdAndUpdate(
@@ -322,7 +373,17 @@ const EquipmentRepairReportResolvers = {
         if (parent.equipmentId && typeof parent.equipmentId === 'object') {
             return parent.equipmentId;
         }
-        return Equipment.findById(parent.equipmentId);
+
+        if (!parent.equipmentId) {
+            throw new Error(`Equipment ID is missing for repair report ${parent._id}`);
+        }
+
+        const equipment = await Equipment.findById(parent.equipmentId);
+        if (!equipment) {
+            throw new Error(`Equipment with ID ${parent.equipmentId} not found for repair report ${parent._id}`);
+        }
+
+        return equipment;
     },
     reportedBy: async (parent) => {
         if (parent.reportedBy && typeof parent.reportedBy === 'object') {
@@ -339,12 +400,12 @@ const EquipmentRepairReportResolvers = {
     },
     location: async (parent) => {
         if (!parent.location) return null;
-        
+
         // Jika location sudah berupa object (populate berhasil)
         if (typeof parent.location === 'object' && parent.location._id) {
             return parent.location;
         }
-        
+
         // Jika location adalah ObjectId string, cari area
         if (typeof parent.location === 'string' && parent.location.length === 24 && mongoose.isValidObjectId(parent.location)) {
             try {
@@ -354,13 +415,13 @@ const EquipmentRepairReportResolvers = {
                 return null;
             }
         }
-        
+
         // Jika location adalah string biasa (data lama), return null
         if (typeof parent.location === 'string') {
             console.warn(`Legacy string location found: ${parent.location} for report ${parent._id}`);
             return null;
         }
-        
+
         return null;
     },
     statusHistory: async (parent) => {

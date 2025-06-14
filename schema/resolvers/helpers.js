@@ -260,6 +260,103 @@ async function processHolidaysImport(holidaysData, userId) {
     };
 }
 
+/**
+ * Calculate progress percentage based on BOQ (Bill of Quantity) completion
+ * @param {Array} activityDetails - Array of activity details with workItem and actual quantities
+ * @param {Object} spk - SPK object with workItems containing BOQ volumes
+ * @returns {Number} Average progress percentage from all work items
+ */
+function calculateBOQProgressPercentage(activityDetails, spk) {
+    if (!activityDetails || activityDetails.length === 0) {
+        return 0;
+    }
+
+    let totalProgressSum = 0;
+    let validItemsCount = 0;
+
+    activityDetails.forEach(detail => {
+        if (detail.workItemId && detail.actualQuantity) {
+            // Find matching work item in SPK to get BOQ target
+            const spkWorkItem = spk.workItems?.find(item =>
+                item.workItemId.toString() === (detail.workItemId._id || detail.workItemId).toString()
+            );
+
+            if (spkWorkItem && spkWorkItem.boqVolume) {
+                const targetNr = spkWorkItem.boqVolume.nr || 0;
+                const targetR = spkWorkItem.boqVolume.r || 0;
+                const totalTarget = targetNr + targetR;
+
+                const actualNr = detail.actualQuantity.nr || 0;
+                const actualR = detail.actualQuantity.r || 0;
+                const totalActual = actualNr + actualR;
+
+                if (totalTarget > 0) {
+                    const itemProgress = Math.min((totalActual / totalTarget) * 100, 100);
+                    totalProgressSum += itemProgress;
+                    validItemsCount++;
+
+                    console.log(`[BOQ Progress Helper] Work Item: ${detail.workItemId.name || detail.workItemId}`);
+                    console.log(`  Target: ${targetNr} + ${targetR} = ${totalTarget}`);
+                    console.log(`  Actual: ${actualNr} + ${actualR} = ${totalActual}`);
+                    console.log(`  Item Progress: ${itemProgress.toFixed(2)}%`);
+                }
+            }
+        }
+    });
+
+    // Calculate average progress percentage from all work items
+    const avgProgress = validItemsCount > 0 ? totalProgressSum / validItemsCount : 0;
+    console.log(`[BOQ Progress Helper] Total: ${totalProgressSum.toFixed(2)}% / ${validItemsCount} items = ${avgProgress.toFixed(2)}%`);
+
+    return avgProgress;
+}
+
+/**
+ * Calculate budget usage percentage based on daily target
+ * @param {Array} activityDetails - Array of activity details with workItem and actual quantities
+ * @param {Object} spk - SPK object with budget and dates
+ * @returns {Number} Budget usage percentage for the day
+ */
+function calculateBudgetUsagePercentage(activityDetails, spk) {
+    if (!activityDetails || activityDetails.length === 0 || !spk) {
+        return 0;
+    }
+
+    // Calculate daily target
+    let targetHarian = 0;
+    let totalHariKerja = 1;
+
+    if (spk.startDate && spk.endDate) {
+        const start = new Date(spk.startDate);
+        const end = new Date(spk.endDate);
+        totalHariKerja = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1);
+    }
+
+    const totalBudget = spk.budget || 0;
+    targetHarian = totalBudget / totalHariKerja;
+
+    // Calculate total cost from activity details
+    let totalBiayaItemwork = 0;
+
+    activityDetails.forEach(detail => {
+        if (detail.workItemId && detail.actualQuantity) {
+            const rates = detail.workItemId.rates || { nr: { rate: 0 }, r: { rate: 0 } };
+            const qtyNr = detail.actualQuantity.nr || 0;
+            const qtyR = detail.actualQuantity.r || 0;
+            const rateNr = rates.nr?.rate || 0;
+            const rateR = rates.r?.rate || 0;
+            const biaya = (qtyNr * rateNr) + (qtyR * rateR);
+            totalBiayaItemwork += biaya;
+        }
+    });
+
+    // Calculate budget usage percentage
+    const budgetUsage = targetHarian > 0 ? (totalBiayaItemwork / targetHarian) * 100 : 0;
+    console.log(`[Budget Usage Helper] ${totalBiayaItemwork.toLocaleString()} / ${targetHarian.toLocaleString()} = ${budgetUsage.toFixed(2)}%`);
+
+    return budgetUsage;
+}
+
 module.exports = {
     calculatePhysicalProgress,
     calculateFinancialProgress,
@@ -271,5 +368,7 @@ module.exports = {
     getWeekDates,
     getMonthDates,
     calculateProgressPercentage,
-    processHolidaysImport
+    processHolidaysImport,
+    calculateBOQProgressPercentage,
+    calculateBudgetUsagePercentage
 }; 

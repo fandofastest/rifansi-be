@@ -1,213 +1,88 @@
-const { ApproverSetting, User, Report } = require('../../models');
+const { User, Report } = require('../../models');
 
 const Query = {
+    // These queries are deprecated since approval is now area-based
+    // keeping them for backward compatibility but they will return empty/null
+
     approverSettings: async (_, __, { user }) => {
         if (!user) throw new Error('Not authenticated');
-        return ApproverSetting.find().populate('userId approverId');
+        console.log('Warning: approverSettings query is deprecated. Approval is now area-based.');
+        return [];
     },
 
     approverSetting: async (_, { id }, { user }) => {
         if (!user) throw new Error('Not authenticated');
-        return ApproverSetting.findById(id).populate('userId approverId');
+        console.log('Warning: approverSetting query is deprecated. Approval is now area-based.');
+        return null;
     },
 
-    // Query untuk mendapatkan approver dari user tertentu
     getUserApprover: async (_, { userId }, { user }) => {
         if (!user) throw new Error('Not authenticated');
-        return ApproverSetting.findOne({
-            userId,
-            isActive: true
-        }).populate('approverId');
+        console.log('Warning: getUserApprover query is deprecated. Approval is now area-based.');
+        return null;
     },
 
-    // Query untuk mendapatkan daftar user yang bisa diapprove oleh approver tertentu
     getApproverUsers: async (_, { approverId }, { user }) => {
         if (!user) throw new Error('Not authenticated');
-        return ApproverSetting.find({
-            approverId,
-            isActive: true
-        }).populate('userId');
+        console.log('Warning: getApproverUsers query is deprecated. Approval is now area-based.');
+        return [];
     }
 };
 
 const Mutation = {
-    // Membuat setting approver baru
+    // Approver setting mutations are deprecated
     createApproverSetting: async (_, { input }, { user }) => {
-        try {
-            console.log('createApproverSetting called with input:', input);
-            if (!user) {
-                console.log('Not authenticated');
-                throw new Error('Not authenticated');
-            }
-            console.log('Current user:', user);
-
-            // Validasi bahwa user yang melakukan setting adalah admin
-            const currentUser = await User.findById(user.userId);
-            console.log('Current user from DB:', currentUser);
-            if (!currentUser) {
-                console.log('Current user not found');
-                throw new Error('Current user not found');
-            }
-
-            const isAdmin = await currentUser.isAdmin();
-            console.log('Is current user admin?', isAdmin);
-            if (!isAdmin) {
-                console.log('User is not admin');
-                throw new Error('Only admin can set approvers');
-            }
-
-            // Validasi bahwa user dan approver ada
-            const [userExists, approverExists] = await Promise.all([
-                User.findById(input.userId),
-                User.findById(input.approverId)
-            ]);
-            console.log('User exists:', userExists);
-            console.log('Approver exists:', approverExists);
-
-            if (!userExists) {
-                console.log('User not found');
-                throw new Error('User not found');
-            }
-            if (!approverExists) {
-                console.log('Approver not found');
-                throw new Error('Approver not found');
-            }
-
-            // Cek apakah setting sudah ada
-            const existingSetting = await ApproverSetting.findOne({
-                userId: input.userId,
-                approverId: input.approverId
-            });
-            console.log('Existing setting:', existingSetting);
-
-            if (existingSetting) {
-                console.log('Approver setting already exists');
-                throw new Error('Approver setting already exists');
-            }
-
-            // Buat setting baru
-            const approverSetting = new ApproverSetting({
-                userId: input.userId,
-                approverId: input.approverId,
-                createdBy: user.userId,
-                isActive: true
-            });
-            console.log('New approver setting:', approverSetting);
-
-            // Simpan ke database
-            const savedSetting = await approverSetting.save();
-            console.log('Saved setting:', savedSetting);
-
-            // Populate dan return
-            const populatedSetting = await ApproverSetting.findById(savedSetting._id)
-                .populate('userId')
-                .populate('approverId')
-                .populate('createdBy');
-            console.log('Populated setting:', populatedSetting);
-
-            if (!populatedSetting) {
-                console.log('Failed to create approver setting');
-                throw new Error('Failed to create approver setting');
-            }
-
-            return populatedSetting;
-        } catch (error) {
-            console.error('Error in createApproverSetting:', error);
-            throw error;
-        }
+        if (!user) throw new Error('Not authenticated');
+        throw new Error('ApproverSetting is deprecated. Approval is now based on area. Users with SUPERVISOR or MANDOR roles can approve reports in their assigned area.');
     },
 
-    // Update status aktif/nonaktif setting
     updateApproverSetting: async (_, { id, isActive }, { user }) => {
         if (!user) throw new Error('Not authenticated');
-
-        // Validasi bahwa user yang melakukan update adalah admin
-        const currentUser = await User.findById(user.userId);
-        if (!await currentUser.isAdmin()) {
-            throw new Error('Only admin can update approver settings');
-        }
-
-        const approverSetting = await ApproverSetting.findByIdAndUpdate(
-            id,
-            {
-                isActive,
-                lastUpdatedBy: user.userId
-            },
-            { new: true }
-        ).populate('userId approverId');
-
-        if (!approverSetting) {
-            throw new Error('Approver setting not found');
-        }
-
-        return approverSetting;
+        throw new Error('ApproverSetting is deprecated. Approval is now based on area. Users with SUPERVISOR or MANDOR roles can approve reports in their assigned area.');
     },
 
-    // Hapus setting approver
     deleteApproverSetting: async (_, { id }, { user }) => {
         if (!user) throw new Error('Not authenticated');
-
-        // Validasi bahwa user yang melakukan delete adalah admin
-        const currentUser = await User.findById(user.userId);
-        if (!await currentUser.isAdmin()) {
-            throw new Error('Only admin can delete approver settings');
-        }
-
-        const approverSetting = await ApproverSetting.findByIdAndDelete(id);
-        if (!approverSetting) {
-            throw new Error('Approver setting not found');
-        }
-
-        return true;
+        throw new Error('ApproverSetting is deprecated. Approval is now based on area. Users with SUPERVISOR or MANDOR roles can approve reports in their assigned area.');
     },
 
-    // Mendapatkan approver berdasarkan user ID
     getApproverByUser: async (_, { userId }, { user }) => {
-        try {
-            if (!user) {
-                console.log('Not authenticated');
-                throw new Error('Not authenticated');
-            }
-
-            // Validasi bahwa user yang diminta ada
-            const targetUser = await User.findById(userId);
-            if (!targetUser) {
-                console.log('Target user not found');
-                throw new Error('User not found');
-            }
-
-            // Cari approver setting yang aktif
-            const approverSetting = await ApproverSetting.findOne({
-                userId,
-                isActive: true
-            }).populate('approverId');
-
-            if (!approverSetting) {
-                console.log('No active approver found for user');
-                return null;
-            }
-
-            return approverSetting.approverId;
-        } catch (error) {
-            console.error('Error in getApproverByUser:', error);
-            throw error;
-        }
+        if (!user) throw new Error('Not authenticated');
+        console.log('Warning: getApproverByUser is deprecated. Approval is now area-based.');
+        return null;
     },
 
-    // Fungsi untuk approve laporan
+    // Report approval functions - updated to work with area-based approval
     approveReport: async (_, { reportId }, { user }) => {
         try {
             if (!user) throw new Error('Not authenticated');
 
-            // Validasi bahwa user adalah admin atau superadmin
-            const currentUser = await User.findById(user.userId);
+            // Check if user is admin, superadmin, supervisor, or mandor
+            const currentUser = await User.findById(user.userId).populate(['role', 'area']);
             if (!currentUser) throw new Error('User not found');
 
-            const isAdmin = await currentUser.isAdmin();
-            const isSuperAdmin = await currentUser.isSuperAdmin();
+            const isAdmin = currentUser.role && (currentUser.role.roleCode === 'ADMIN' || currentUser.role.roleCode === 'SUPERADMIN');
+            const canApprove = currentUser.role && (
+                currentUser.role.roleCode === 'SUPERVISOR' ||
+                currentUser.role.roleCode === 'MANDOR'
+            );
 
-            if (!isAdmin && !isSuperAdmin) {
-                throw new Error('Only admin and superadmin can approve reports');
+            if (!isAdmin && !canApprove) {
+                throw new Error('Only admin, superadmin, supervisor, and mandor can approve reports');
+            }
+
+            // If not admin/superadmin, check area-based approval
+            if (!isAdmin) {
+                const report = await Report.findById(reportId).populate('areaId');
+                if (!report) throw new Error('Report not found');
+
+                if (!currentUser.area || !report.areaId) {
+                    throw new Error('User area or report area not specified');
+                }
+
+                if (currentUser.area._id.toString() !== report.areaId._id.toString()) {
+                    throw new Error('You can only approve reports from your assigned area');
+                }
             }
 
             const report = await Report.findByIdAndUpdate(
@@ -228,20 +103,37 @@ const Mutation = {
         }
     },
 
-    // Fungsi untuk reject laporan
+    // Reject report function - updated to work with area-based approval
     rejectReport: async (_, { reportId, reason }, { user }) => {
         try {
             if (!user) throw new Error('Not authenticated');
 
-            // Validasi bahwa user adalah admin atau superadmin
-            const currentUser = await User.findById(user.userId);
+            // Check if user is admin, superadmin, supervisor, or mandor
+            const currentUser = await User.findById(user.userId).populate(['role', 'area']);
             if (!currentUser) throw new Error('User not found');
 
-            const isAdmin = await currentUser.isAdmin();
-            const isSuperAdmin = await currentUser.isSuperAdmin();
+            const isAdmin = currentUser.role && (currentUser.role.roleCode === 'ADMIN' || currentUser.role.roleCode === 'SUPERADMIN');
+            const canApprove = currentUser.role && (
+                currentUser.role.roleCode === 'SUPERVISOR' ||
+                currentUser.role.roleCode === 'MANDOR'
+            );
 
-            if (!isAdmin && !isSuperAdmin) {
-                throw new Error('Only admin and superadmin can reject reports');
+            if (!isAdmin && !canApprove) {
+                throw new Error('Only admin, superadmin, supervisor, and mandor can reject reports');
+            }
+
+            // If not admin/superadmin, check area-based approval
+            if (!isAdmin) {
+                const report = await Report.findById(reportId).populate('areaId');
+                if (!report) throw new Error('Report not found');
+
+                if (!currentUser.area || !report.areaId) {
+                    throw new Error('User area or report area not specified');
+                }
+
+                if (currentUser.area._id.toString() !== report.areaId._id.toString()) {
+                    throw new Error('You can only reject reports from your assigned area');
+                }
             }
 
             const report = await Report.findByIdAndUpdate(
@@ -263,19 +155,18 @@ const Mutation = {
         }
     },
 
-    // Fungsi untuk delete laporan
+    // Delete report function - kept as is for admin/superadmin
     deleteReport: async (_, { reportId }, { user }) => {
         try {
             if (!user) throw new Error('Not authenticated');
 
-            // Validasi bahwa user adalah admin atau superadmin
-            const currentUser = await User.findById(user.userId);
+            // Only admin and superadmin can delete reports
+            const currentUser = await User.findById(user.userId).populate('role');
             if (!currentUser) throw new Error('User not found');
 
-            const isAdmin = await currentUser.isAdmin();
-            const isSuperAdmin = await currentUser.isSuperAdmin();
+            const isAdmin = currentUser.role && (currentUser.role.roleCode === 'ADMIN' || currentUser.role.roleCode === 'SUPERADMIN');
 
-            if (!isAdmin && !isSuperAdmin) {
+            if (!isAdmin) {
                 throw new Error('Only admin and superadmin can delete reports');
             }
 
@@ -289,20 +180,23 @@ const Mutation = {
     }
 };
 
-// Type Resolver untuk ApproverSetting
+// Type Resolver - deprecated but kept for backward compatibility
 const ApproverSettingResolvers = {
     userId: async (parent) => {
-        return User.findById(parent.userId);
+        console.log('Warning: ApproverSetting resolvers are deprecated. Approval is now area-based.');
+        return null;
     },
     approverId: async (parent) => {
-        return User.findById(parent.approverId);
+        console.log('Warning: ApproverSetting resolvers are deprecated. Approval is now area-based.');
+        return null;
     },
     createdBy: async (parent) => {
-        return User.findById(parent.createdBy);
+        console.log('Warning: ApproverSetting resolvers are deprecated. Approval is now area-based.');
+        return null;
     },
     lastUpdatedBy: async (parent) => {
-        if (!parent.lastUpdatedBy) return null;
-        return User.findById(parent.lastUpdatedBy);
+        console.log('Warning: ApproverSetting resolvers are deprecated. Approval is now area-based.');
+        return null;
     }
 };
 

@@ -143,8 +143,8 @@ const typeDefs = gql`
   # Area
   type Area {
     id: ID!
-    name: String!
-    location: Location!
+    name: String
+    location: Location
     createdAt: String!
     updatedAt: String!
   }
@@ -457,12 +457,21 @@ const typeDefs = gql`
     dailyActivitiesBySPK(spkId: ID!): [DailyActivity!]!
     dailyActivitiesByDate(date: String!): [DailyActivity!]!
     dailyActivitiesByUser(userId: ID!): [DailyActivity!]!
-    dailyActivitiesWithDetailsByUser(userId: ID!): [DailyActivityWithDetails!]!
-    dailyActivitiesWithDetailsByUserAndApprover(userId: ID!, approverId: ID!): [DailyActivityWithDetails!]!
-    dailyActivitiesWithDetailsByApprover(approverId: ID!): [DailyActivityWithDetails!]!
     
-    # Get reports (daily activities) by area
-    getLaporanByArea(areaId: ID, startDate: String, endDate: String, status: String): [LaporanByAreaDetails!]!
+    # Consolidated query to get daily activities with details (replaces multiple old queries)
+    getDailyActivityWithDetails(
+      areaId: ID
+      userId: ID
+      activityId: ID
+      startDate: String
+      endDate: String
+    ): [LaporanByAreaDetails!]!
+    
+    # DEPRECATED - Use getDailyActivityWithDetails instead
+    dailyActivitiesWithDetailsByUser(userId: ID!): [DailyActivityWithDetails!]! @deprecated(reason: "Use getDailyActivityWithDetails with userId parameter")
+    dailyActivitiesWithDetailsByUserAndApprover(userId: ID!, approverId: ID!): [DailyActivityWithDetails!]! @deprecated(reason: "Approver system changed to area-based. Use getDailyActivityWithDetails instead")
+    dailyActivitiesWithDetailsByApprover(approverId: ID!): [DailyActivityWithDetails!]! @deprecated(reason: "Approver system changed to area-based. Use getDailyActivityWithDetails instead")
+    getLaporanByArea(areaId: ID, startDate: String, endDate: String, status: String): [LaporanByAreaDetails!]! @deprecated(reason: "Use getDailyActivityWithDetails with areaId parameter")
 
     # ActivityDetail
     activityDetails: [ActivityDetail!]!
@@ -751,12 +760,12 @@ const typeDefs = gql`
 
     deleteDailyActivity(id: ID!): Boolean!
 
-    # Approval Mutation
+    # DEPRECATED - Use approveDailyReport instead (approval is now area-based)
     updateApproval(
       id: ID!
       status: String!
       remarks: String
-    ): DailyActivity!
+    ): DailyActivity! @deprecated(reason: "Use approveDailyReport instead. Approval system changed to area-based.")
 
     # ActivityDetail
     createActivityDetail(
@@ -1340,6 +1349,7 @@ const typeDefs = gql`
     approvedAt: String
     rejectionReason: String
     progressPercentage: Float!
+    budgetUsage: Float!
     activityDetails: [ActivityDetail!]!
     equipmentLogs: [EquipmentLog!]!
     manpowerLogs: [ManpowerLog!]!
@@ -1483,6 +1493,10 @@ const typeDefs = gql`
 
   type TotalProgress {
     percentage: Float!
+    totalTargetBOQ: Float!
+    totalCompletedBOQ: Float!
+    remainingBOQ: Float!
+    # Financial data kept for reference
     totalBudget: Float!
     totalSpent: Float!
     remainingBudget: Float!
@@ -1666,7 +1680,7 @@ const typeDefs = gql`
 
   type Rate {
     rate: Float!
-    description: String!
+    description: String
   }
 
   type WorkItemRates {

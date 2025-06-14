@@ -1,5 +1,5 @@
 const { SPK, WorkItem, Area, Category, SubCategory, Unit } = require('../../models');
-const { calculateProgressPercentage } = require('./helpers');
+const { calculateProgressPercentage, calculateBOQProgressPercentage } = require('./helpers');
 const DailyActivity = require('../../models/DailyActivity');
 const MaterialUsageLog = require('../../models/MaterialUsageLog');
 const ManpowerLog = require('../../models/ManpowerLog');
@@ -389,18 +389,18 @@ const Query = {
 
         // Jika belum ada daily activities, buat satu entry default dengan work items dari SPK
         let formattedDailyActivities = [];
-        
+
         if (dailyActivities.length === 0) {
             // Buat default daily activity dengan semua work items dari SPK
             const defaultWorkItems = spk.workItems.map(spkWorkItem => {
                 const workItemData = spkWorkItem.workItemId;
                 if (!workItemData) return null;
-                
+
                 const boqVolume = {
                     nr: spkWorkItem.boqVolume?.nr || 0,
                     r: spkWorkItem.boqVolume?.r || 0
                 };
-                
+
                 return {
                     id: workItemData._id?.toString() || workItemData.toString(),
                     name: workItemData.name || '',
@@ -440,7 +440,7 @@ const Query = {
                     dailyCost: { nr: 0, r: 0 }
                 };
             }).filter(Boolean);
-            
+
             formattedDailyActivities = [{
                 id: 'no-activity',
                 date: new Date().toISOString(),
@@ -462,175 +462,175 @@ const Query = {
         } else {
             // Format daily activities with their work items and costs
             formattedDailyActivities = dailyActivities.map(da => {
-            if (!da || !da._id) return null;
-            const daId = da._id.toString();
-            const activityDetails = activityDetailsByDailyActivity[daId] || [];
-            const materialLogs = materialLogsByDailyActivity[daId] || [];
-            const manpowerLogs = manpowerLogsByDailyActivity[daId] || [];
-            const equipmentLogs = equipmentLogsByDailyActivity[daId] || [];
-            const otherCostLogs = otherCostLogsByDailyActivity[daId] || [];
+                if (!da || !da._id) return null;
+                const daId = da._id.toString();
+                const activityDetails = activityDetailsByDailyActivity[daId] || [];
+                const materialLogs = materialLogsByDailyActivity[daId] || [];
+                const manpowerLogs = manpowerLogsByDailyActivity[daId] || [];
+                const equipmentLogs = equipmentLogsByDailyActivity[daId] || [];
+                const otherCostLogs = otherCostLogsByDailyActivity[daId] || [];
 
-            // Hitung total hari kerja dari startDate dan endDate SPK
-            const start = spk.startDate ? new Date(spk.startDate) : null;
-            const end = spk.endDate ? new Date(spk.endDate) : null;
-            const totalHariKerja = (start && end) ? Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1) : 1;
+                // Hitung total hari kerja dari startDate dan endDate SPK
+                const start = spk.startDate ? new Date(spk.startDate) : null;
+                const end = spk.endDate ? new Date(spk.endDate) : null;
+                const totalHariKerja = (start && end) ? Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1) : 1;
 
-            // Format work items
-            const workItems = activityDetails.map(detail => {
-                if (!detail || !detail.workItemId) return null;
-                const workItemData = detail.workItemId;
-                // Fungsi bantu untuk ambil ID
-                const getId = (val) => {
-                    if (!val) return '';
-                    if (typeof val === 'string') return val;
-                    if (val._id) return String(val._id);
-                    return String(val);
-                };
-                const spkWorkItem = spk.workItems.find(item =>
-                    getId(item.workItemId) === getId(workItemData._id)
-                );
-                const boqVolume = spkWorkItem ? {
-                    nr: spkWorkItem.boqVolume?.nr || 0,
-                    r: spkWorkItem.boqVolume?.r || 0
-                } : { nr: 0, r: 0 };
-                return {
-                    id: workItemData._id?.toString() || workItemData.toString(),
-                    name: workItemData.name || '',
-                    description: workItemData.description || '',
-                    categoryId: workItemData.categoryId?._id?.toString() || workItemData.categoryId?.toString() || null,
-                    subCategoryId: workItemData.subCategoryId?._id?.toString() || workItemData.subCategoryId?.toString() || null,
-                    unitId: workItemData.unitId?._id?.toString() || workItemData.unitId?.toString() || null,
-                    category: workItemData.categoryId ? {
-                        id: workItemData.categoryId._id?.toString() || workItemData.categoryId.toString(),
-                        name: workItemData.categoryId.name || '',
-                        code: workItemData.categoryId.code || ''
-                    } : null,
-                    subCategory: workItemData.subCategoryId ? {
-                        id: workItemData.subCategoryId._id?.toString() || workItemData.subCategoryId.toString(),
-                        name: workItemData.subCategoryId.name || ''
-                    } : null,
-                    unit: workItemData.unitId ? {
-                        id: workItemData.unitId._id?.toString() || workItemData.unitId.toString(),
-                        name: workItemData.unitId.name || '',
-                        code: workItemData.unitId.code || ''
-                    } : null,
-                    rates: {
-                        nr: {
-                            rate: workItemData.rates?.nr?.rate ?? 0,
-                            description: workItemData.rates?.nr?.description ?? 'Non-remote rate'
+                // Format work items
+                const workItems = activityDetails.map(detail => {
+                    if (!detail || !detail.workItemId) return null;
+                    const workItemData = detail.workItemId;
+                    // Fungsi bantu untuk ambil ID
+                    const getId = (val) => {
+                        if (!val) return '';
+                        if (typeof val === 'string') return val;
+                        if (val._id) return String(val._id);
+                        return String(val);
+                    };
+                    const spkWorkItem = spk.workItems.find(item =>
+                        getId(item.workItemId) === getId(workItemData._id)
+                    );
+                    const boqVolume = spkWorkItem ? {
+                        nr: spkWorkItem.boqVolume?.nr || 0,
+                        r: spkWorkItem.boqVolume?.r || 0
+                    } : { nr: 0, r: 0 };
+                    return {
+                        id: workItemData._id?.toString() || workItemData.toString(),
+                        name: workItemData.name || '',
+                        description: workItemData.description || '',
+                        categoryId: workItemData.categoryId?._id?.toString() || workItemData.categoryId?.toString() || null,
+                        subCategoryId: workItemData.subCategoryId?._id?.toString() || workItemData.subCategoryId?.toString() || null,
+                        unitId: workItemData.unitId?._id?.toString() || workItemData.unitId?.toString() || null,
+                        category: workItemData.categoryId ? {
+                            id: workItemData.categoryId._id?.toString() || workItemData.categoryId.toString(),
+                            name: workItemData.categoryId.name || '',
+                            code: workItemData.categoryId.code || ''
+                        } : null,
+                        subCategory: workItemData.subCategoryId ? {
+                            id: workItemData.subCategoryId._id?.toString() || workItemData.subCategoryId.toString(),
+                            name: workItemData.subCategoryId.name || ''
+                        } : null,
+                        unit: workItemData.unitId ? {
+                            id: workItemData.unitId._id?.toString() || workItemData.unitId.toString(),
+                            name: workItemData.unitId.name || '',
+                            code: workItemData.unitId.code || ''
+                        } : null,
+                        rates: {
+                            nr: {
+                                rate: workItemData.rates?.nr?.rate ?? 0,
+                                description: workItemData.rates?.nr?.description ?? 'Non-remote rate'
+                            },
+                            r: {
+                                rate: workItemData.rates?.r?.rate ?? 0,
+                                description: workItemData.rates?.r?.description ?? 'Remote rate'
+                            }
                         },
-                        r: {
-                            rate: workItemData.rates?.r?.rate ?? 0,
-                            description: workItemData.rates?.r?.description ?? 'Remote rate'
+                        boqVolume,
+                        actualQuantity: detail.actualQuantity || { nr: 0, r: 0 },
+                        lastUpdatedAt: detail.updatedAt?.toISOString() || null,
+                        dailyProgress: {
+                            nr: boqVolume.nr / totalHariKerja,
+                            r: boqVolume.r / totalHariKerja
+                        },
+                        progressAchieved: {
+                            nr: boqVolume.nr > 0 ? ((detail.actualQuantity?.nr || 0) / boqVolume.nr) * 100 : 0,
+                            r: boqVolume.r > 0 ? ((detail.actualQuantity?.r || 0) / boqVolume.r) * 100 : 0
+                        },
+                        dailyCost: {
+                            nr: (boqVolume.nr / totalHariKerja) * (workItemData.rates?.nr?.rate ?? 0),
+                            r: (boqVolume.r / totalHariKerja) * (workItemData.rates?.r?.rate ?? 0)
                         }
+                    };
+                }).filter(Boolean);
+
+                // Format costs
+                const costs = {
+                    materials: {
+                        totalCost: materialLogs.reduce((sum, log) => {
+                            if (!log || !log.materialId) return sum;
+                            return sum + (log.quantity * (log.materialId?.unitRate || 0));
+                        }, 0),
+                        items: materialLogs.map(log => {
+                            if (!log || !log.materialId) return null;
+                            return {
+                                material: log.materialId?.name || 'Unknown Material',
+                                quantity: log.quantity || 0,
+                                unit: log.materialId?.unitId?.name || '-',
+                                unitRate: log.materialId?.unitRate || 0,
+                                cost: log.quantity * (log.materialId?.unitRate || 0)
+                            };
+                        }).filter(Boolean)
                     },
-                    boqVolume,
-                    actualQuantity: detail.actualQuantity || { nr: 0, r: 0 },
-                    lastUpdatedAt: detail.updatedAt?.toISOString() || null,
-                    dailyProgress: {
-                        nr: boqVolume.nr / totalHariKerja,
-                        r: boqVolume.r / totalHariKerja
+                    manpower: {
+                        totalCost: manpowerLogs.reduce((sum, log) => {
+                            if (!log || !log.role) return sum;
+                            return sum + (log.workingHours * log.personCount * log.hourlyRate);
+                        }, 0),
+                        items: manpowerLogs.map(log => {
+                            if (!log || !log.role) return null;
+                            return {
+                                role: log.role?.roleName || 'Unknown Role',
+                                numberOfWorkers: log.personCount || 0,
+                                workingHours: log.workingHours || 0,
+                                hourlyRate: log.hourlyRate || 0,
+                                cost: log.workingHours * log.personCount * log.hourlyRate
+                            };
+                        }).filter(Boolean)
                     },
-                    progressAchieved: {
-                        nr: boqVolume.nr > 0 ? ((detail.actualQuantity?.nr || 0) / boqVolume.nr) * 100 : 0,
-                        r: boqVolume.r > 0 ? ((detail.actualQuantity?.r || 0) / boqVolume.r) * 100 : 0
+                    equipment: {
+                        totalCost: equipmentLogs.reduce((sum, log) => {
+                            if (!log) return sum;
+                            const fuelCost = (log.fuelIn - log.fuelRemaining) * log.fuelPrice;
+                            const rentalCost = log.workingHour * log.hourlyRate;
+                            return sum + fuelCost + rentalCost;
+                        }, 0),
+                        items: equipmentLogs.map(log => {
+                            if (!log || !log.equipmentId) return null;
+                            return {
+                                equipment: log.equipmentId ? {
+                                    id: log.equipmentId._id?.toString() || log.equipmentId.id || '',
+                                    equipmentCode: log.equipmentId.equipmentCode || '',
+                                    plateOrSerialNo: log.equipmentId.plateOrSerialNo || '',
+                                    equipmentType: log.equipmentId.equipmentType || '',
+                                    name: log.equipmentId.name || ''
+                                } : null,
+                                workingHours: log.workingHour || 0,
+                                hourlyRate: log.hourlyRate || 0,
+                                rentalRatePerDay: log.rentalRatePerDay || 0,
+                                fuelUsed: (log.fuelIn - log.fuelRemaining) || 0,
+                                fuelPrice: log.fuelPrice || 0,
+                                cost: ((log.fuelIn - log.fuelRemaining) * log.fuelPrice) + (log.workingHour * log.hourlyRate)
+                            };
+                        }).filter(Boolean)
                     },
-                    dailyCost: {
-                        nr: (boqVolume.nr / totalHariKerja) * (workItemData.rates?.nr?.rate ?? 0),
-                        r: (boqVolume.r / totalHariKerja) * (workItemData.rates?.r?.rate ?? 0)
+                    otherCosts: {
+                        totalCost: otherCostLogs.reduce((sum, log) => {
+                            if (!log) return sum;
+                            return sum + (log.amount || 0);
+                        }, 0),
+                        items: otherCostLogs.map(log => {
+                            if (!log) return null;
+                            return {
+                                description: log.description || 'No Description',
+                                cost: log.amount || 0
+                            };
+                        }).filter(Boolean)
                     }
                 };
+
+                return {
+                    id: da._id.toString(),
+                    date: da.date?.toISOString() || null,
+                    location: da.location || '',
+                    weather: da.weather || '',
+                    status: da.status || '',
+                    workStartTime: da.workStartTime || '',
+                    workEndTime: da.workEndTime || '',
+                    createdBy: da.createdBy ? da.createdBy.fullName : '',
+                    closingRemarks: da.closingRemarks || '',
+                    workItems,
+                    costs
+                };
             }).filter(Boolean);
-
-            // Format costs
-            const costs = {
-                materials: {
-                    totalCost: materialLogs.reduce((sum, log) => {
-                        if (!log || !log.materialId) return sum;
-                        return sum + (log.quantity * (log.materialId?.unitRate || 0));
-                    }, 0),
-                    items: materialLogs.map(log => {
-                        if (!log || !log.materialId) return null;
-                        return {
-                            material: log.materialId?.name || 'Unknown Material',
-                            quantity: log.quantity || 0,
-                            unit: log.materialId?.unitId?.name || '-',
-                            unitRate: log.materialId?.unitRate || 0,
-                            cost: log.quantity * (log.materialId?.unitRate || 0)
-                        };
-                    }).filter(Boolean)
-                },
-                manpower: {
-                    totalCost: manpowerLogs.reduce((sum, log) => {
-                        if (!log || !log.role) return sum;
-                        return sum + (log.workingHours * log.personCount * log.hourlyRate);
-                    }, 0),
-                    items: manpowerLogs.map(log => {
-                        if (!log || !log.role) return null;
-                        return {
-                            role: log.role?.roleName || 'Unknown Role',
-                            numberOfWorkers: log.personCount || 0,
-                            workingHours: log.workingHours || 0,
-                            hourlyRate: log.hourlyRate || 0,
-                            cost: log.workingHours * log.personCount * log.hourlyRate
-                        };
-                    }).filter(Boolean)
-                },
-                equipment: {
-                    totalCost: equipmentLogs.reduce((sum, log) => {
-                        if (!log) return sum;
-                        const fuelCost = (log.fuelIn - log.fuelRemaining) * log.fuelPrice;
-                        const rentalCost = log.workingHour * log.hourlyRate;
-                        return sum + fuelCost + rentalCost;
-                    }, 0),
-                    items: equipmentLogs.map(log => {
-                        if (!log || !log.equipmentId) return null;
-                        return {
-                            equipment: log.equipmentId ? {
-                                id: log.equipmentId._id?.toString() || log.equipmentId.id || '',
-                                equipmentCode: log.equipmentId.equipmentCode || '',
-                                plateOrSerialNo: log.equipmentId.plateOrSerialNo || '',
-                                equipmentType: log.equipmentId.equipmentType || '',
-                                name: log.equipmentId.name || ''
-                            } : null,
-                            workingHours: log.workingHour || 0,
-                            hourlyRate: log.hourlyRate || 0,
-                            rentalRatePerDay: log.rentalRatePerDay || 0,
-                            fuelUsed: (log.fuelIn - log.fuelRemaining) || 0,
-                            fuelPrice: log.fuelPrice || 0,
-                            cost: ((log.fuelIn - log.fuelRemaining) * log.fuelPrice) + (log.workingHour * log.hourlyRate)
-                        };
-                    }).filter(Boolean)
-                },
-                otherCosts: {
-                    totalCost: otherCostLogs.reduce((sum, log) => {
-                        if (!log) return sum;
-                        return sum + (log.amount || 0);
-                    }, 0),
-                    items: otherCostLogs.map(log => {
-                        if (!log) return null;
-                        return {
-                            description: log.description || 'No Description',
-                            cost: log.amount || 0
-                        };
-                    }).filter(Boolean)
-                }
-            };
-
-            return {
-                id: da._id.toString(),
-                date: da.date?.toISOString() || null,
-                location: da.location || '',
-                weather: da.weather || '',
-                status: da.status || '',
-                workStartTime: da.workStartTime || '',
-                workEndTime: da.workEndTime || '',
-                createdBy: da.createdBy ? da.createdBy.fullName : '',
-                closingRemarks: da.closingRemarks || '',
-                workItems,
-                costs
-            };
-        }).filter(Boolean);
         }
 
         // Calculate total costs
@@ -641,6 +641,26 @@ const Query = {
                 da.costs.equipment.totalCost +
                 da.costs.otherCosts.totalCost;
         }, 0);
+
+        // Calculate total BOQ volumes for target and completed
+        const allActivityDetails = activityDetails || [];
+
+        const totalTargetBOQ = spk.workItems.reduce((total, item) => {
+            const nr = item.boqVolume?.nr || 0;
+            const r = item.boqVolume?.r || 0;
+            return total + nr + r;
+        }, 0);
+
+        const totalCompletedBOQ = allActivityDetails.reduce((total, detail) => {
+            const nr = detail.actualQuantity?.nr || 0;
+            const r = detail.actualQuantity?.r || 0;
+            return total + nr + r;
+        }, 0);
+
+        const remainingBOQ = totalTargetBOQ - totalCompletedBOQ;
+
+        // Calculate BOQ-based progress percentage: (completed / target) * 100
+        const boqProgressPercentage = totalTargetBOQ > 0 ? (totalCompletedBOQ / totalTargetBOQ) * 100 : 0;
 
         const spkObj = spk.toObject();
         return {
@@ -661,7 +681,11 @@ const Query = {
             budget: spkObj.budget || 0,
             dailyActivities: formattedDailyActivities,
             totalProgress: {
-                percentage: spkObj.budget > 0 ? (totalCosts / spkObj.budget) * 100 : 0,
+                percentage: Math.round(boqProgressPercentage * 100) / 100,
+                totalTargetBOQ: totalTargetBOQ,
+                totalCompletedBOQ: totalCompletedBOQ,
+                remainingBOQ: remainingBOQ,
+                // Keep financial data for reference
                 totalBudget: spkObj.budget || 0,
                 totalSpent: totalCosts,
                 remainingBudget: (spkObj.budget || 0) - totalCosts
