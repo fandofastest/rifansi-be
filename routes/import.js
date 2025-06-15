@@ -3,21 +3,25 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { importExcelToSPK } = require('../scripts/importExcell');
+const {
+  importExcelToSPK,
+  importCompleteWAPBOQ,
+  testExtractWAPMetadata
+} = require('../scripts/importExcell');
 
 // Konfigurasi multer untuk menyimpan file upload
 const storage = multer.diskStorage({
-  destination: function(req, file, cb) {
+  destination: function (req, file, cb) {
     const uploadDir = path.join(__dirname, '../uploads');
-    
+
     // Cek dan buat direktori jika belum ada
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
-    
+
     cb(null, uploadDir);
   },
-  filename: function(req, file, cb) {
+  filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     const ext = path.extname(file.originalname);
     cb(null, 'spk-' + uniqueSuffix + ext);
@@ -28,7 +32,7 @@ const storage = multer.diskStorage({
 const fileFilter = (req, file, cb) => {
   const allowedTypes = ['.xlsx', '.xls'];
   const ext = path.extname(file.originalname).toLowerCase();
-  
+
   if (allowedTypes.includes(ext)) {
     cb(null, true);
   } else {
@@ -36,7 +40,7 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-const upload = multer({ 
+const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
   limits: {
@@ -44,7 +48,45 @@ const upload = multer({
   }
 });
 
-// Endpoint untuk upload file excel SPK
+// Endpoint untuk upload file excel SPK format LAMA
+router.post('/import-spk-old', upload.single('excelFile'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'File tidak ditemukan' });
+    }
+
+    const filePath = req.file.path;
+    console.log(`📥 File berhasil diupload (format lama): ${filePath}`);
+
+    // Jalankan import format lama
+    await importExcelToSPK(filePath);
+
+    // Hapus file setelah diproses
+    fs.unlinkSync(filePath);
+
+    return res.status(200).json({
+      success: true,
+      message: 'SPK format lama berhasil diimport',
+      file: req.file.originalname,
+      format: 'old'
+    });
+  } catch (error) {
+    console.error('❌ Error importing SPK (old format):', error);
+
+    // Hapus file jika ada error
+    if (req.file?.path && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: 'Gagal import SPK format lama',
+      error: error.message
+    });
+  }
+});
+
+// Endpoint untuk upload file excel SPK format WAP (BARU - REKOMENDASI)
 router.post('/import-spk', upload.single('excelFile'), async (req, res) => {
   try {
     if (!req.file) {
@@ -52,35 +94,165 @@ router.post('/import-spk', upload.single('excelFile'), async (req, res) => {
     }
 
     const filePath = req.file.path;
-    console.log(`File berhasil diupload: ${filePath}`);
+    console.log(`📥 File berhasil diupload (format WAP): ${filePath}`);
 
-    // Jalankan import
-    await importExcelToSPK(filePath);
+    // Jalankan import format WAP lengkap
+    const result = await importCompleteWAPBOQ(filePath);
 
-    // Hapus file setelah diproses (opsional)
-    // fs.unlinkSync(filePath);
+    // Hapus file setelah diproses
+    fs.unlinkSync(filePath);
 
-    return res.status(200).json({ 
-      success: true, 
-      message: 'SPK berhasil diimport',
-      file: req.file.originalname
+    return res.status(200).json({
+      success: true,
+      message: 'SPK format WAP berhasil diimport',
+      file: req.file.originalname,
+      format: 'wap',
+      data: {
+        spkId: result.spk._id,
+        spkNo: result.spk.spkNo,
+        wapNo: result.spk.wapNo,
+        title: result.spk.title,
+        budget: result.spk.budget,
+        workItemsCount: result.spk.workItems.length,
+        stats: result.stats
+      }
     });
   } catch (error) {
-    console.error('Error importing SPK:', error);
-    return res.status(500).json({ 
-      success: false, 
-      message: 'Gagal import SPK', 
-      error: error.message 
+    console.error('❌ Error importing SPK (WAP format):', error);
+
+    // Hapus file jika ada error
+    if (req.file?.path && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: 'Gagal import SPK format WAP',
+      error: error.message
     });
   }
 });
 
-// Endpoint untuk melihat status import terbaru (opsional)
+// Endpoint untuk test ekstraksi metadata WAP (tanpa save ke database)
+router.post('/test-wap', upload.single('excelFile'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'File tidak ditemukan' });
+    }
+
+    const filePath = req.file.path;
+    console.log(`📥 File berhasil diupload untuk test: ${filePath}`);
+
+    // Test ekstraksi metadata saja
+    const metadata = await testExtractWAPMetadata(filePath);
+
+    // Hapus file setelah diproses
+    fs.unlinkSync(filePath);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Test ekstraksi metadata berhasil',
+      file: req.file.originalname,
+      metadata: metadata
+    });
+  } catch (error) {
+    console.error('❌ Error testing WAP metadata:', error);
+
+    // Hapus file jika ada error
+    if (req.file?.path && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: 'Gagal test ekstraksi metadata',
+      error: error.message
+    });
+  }
+});
+
+// Endpoint untuk import dengan auto-detect format
+router.post('/import-auto', upload.single('excelFile'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'File tidak ditemukan' });
+    }
+
+    const filePath = req.file.path;
+    console.log(`📥 File berhasil diupload (auto-detect): ${filePath}`);
+
+    // Auto-detect format berdasarkan sheets yang ada
+    const XLSX = require('xlsx');
+    const workbook = XLSX.readFile(filePath);
+    const sheetNames = Object.keys(workbook.Sheets);
+
+    console.log(`📋 Sheets ditemukan: ${sheetNames.join(', ')}`);
+
+    let result;
+    let format;
+
+    if (sheetNames.includes('WAP') && sheetNames.includes('BOQ.')) {
+      // Format WAP
+      console.log('🎯 Terdeteksi format WAP');
+      result = await importCompleteWAPBOQ(filePath);
+      format = 'wap';
+    } else if (sheetNames.includes('BOQ')) {
+      // Format lama
+      console.log('🎯 Terdeteksi format lama');
+      await importExcelToSPK(filePath);
+      format = 'old';
+      result = { message: 'Import format lama berhasil' };
+    } else {
+      throw new Error('Format Excel tidak dikenali. Pastikan ada sheet WAP+BOQ. atau sheet BOQ');
+    }
+
+    // Hapus file setelah diproses
+    fs.unlinkSync(filePath);
+
+    return res.status(200).json({
+      success: true,
+      message: `SPK format ${format.toUpperCase()} berhasil diimport (auto-detected)`,
+      file: req.file.originalname,
+      format: format,
+      sheets: sheetNames,
+      data: format === 'wap' ? {
+        spkId: result.spk._id,
+        spkNo: result.spk.spkNo,
+        wapNo: result.spk.wapNo,
+        title: result.spk.title,
+        budget: result.spk.budget,
+        workItemsCount: result.spk.workItems.length,
+        stats: result.stats
+      } : result
+    });
+  } catch (error) {
+    console.error('❌ Error importing SPK (auto-detect):', error);
+
+    // Hapus file jika ada error
+    if (req.file?.path && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: 'Gagal import SPK (auto-detect)',
+      error: error.message
+    });
+  }
+});
+
+// Endpoint untuk melihat status import terbaru
 router.get('/import-status', (req, res) => {
-  res.status(200).json({ 
-    success: true, 
-    message: 'Import ready', 
-    lastImport: null
+  res.status(200).json({
+    success: true,
+    message: 'Import service ready',
+    supportedFormats: ['old', 'wap'],
+    endpoints: {
+      '/import-spk': 'Import format WAP (rekomendasi)',
+      '/import-spk-old': 'Import format lama',
+      '/import-auto': 'Auto-detect format',
+      '/test-wap': 'Test ekstraksi metadata WAP'
+    }
   });
 });
 
