@@ -278,3 +278,82 @@ query GetSPKDetailsWithProgressBySpkId($spkId: ID!) {
     updatedAt
   }
 } 
+
+# Get SPK Progress Summary by SPK ID (without daily activities breakdown)
+query GetSPKWithProgressBySpkId($spkId: ID!) {
+  spkWithProgressBySpkId(spkId: $spkId) {
+    id
+    spkNo
+    wapNo
+    title
+    projectName
+    date
+    contractor
+    workDescription
+    location {
+      id
+      name
+    }
+    startDate
+    endDate
+    budget
+    workItems {
+      id
+      name
+      description
+      category {
+        id
+        name
+      }
+      subCategory {
+        id
+        name
+      }
+      unit {
+        id
+        name
+      }
+      rates {
+        nr {
+          rate
+          description
+        }
+        r {
+          rate
+          description
+        }
+      }
+      boqVolume {
+        nr
+        r
+      }
+      completedVolume {
+        nr
+        r
+      }
+      remainingVolume {
+        nr
+        r
+      }
+      dailyTarget {
+        nr
+        r
+      }
+      progressPercentage
+      amount
+      spentAmount
+      remainingAmount
+    }
+    totalProgress {
+      percentage
+      totalTargetBOQ
+      totalCompletedBOQ
+      remainingBOQ
+      totalBudget
+      totalSpent
+      remainingBudget
+    }
+    createdAt
+    updatedAt
+  }
+}

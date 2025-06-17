@@ -284,6 +284,9 @@ const Query = {
             .populate('createdBy', 'fullName')
             .populate('spkId', 'spkNo title') || [];
 
+        console.log(`[SPK Progress Debug] SPK ID: ${spkId}`);
+        console.log(`[SPK Progress Debug] Daily Activities Count: ${dailyActivities.length}`);
+
         // Get all activity details for these daily activities
         const activityDetails = await ActivityDetail.find({
             dailyActivityId: { $in: dailyActivities.map(da => da._id) }
@@ -304,6 +307,14 @@ const Query = {
                 }
             ]
         });
+
+        console.log(`[SPK Progress Debug] Activity Details Count: ${activityDetails.length}`);
+        console.log(`[SPK Progress Debug] Activity Details with actualQuantity:`, 
+            activityDetails.map(detail => ({
+                workItemId: detail.workItemId?._id || detail.workItemId,
+                actualQuantity: detail.actualQuantity
+            }))
+        );
 
         // Get all cost logs with complete data
         const materialLogs = await MaterialUsageLog.find({
@@ -648,19 +659,27 @@ const Query = {
         const totalTargetBOQ = spk.workItems.reduce((total, item) => {
             const nr = item.boqVolume?.nr || 0;
             const r = item.boqVolume?.r || 0;
+            console.log(`[BOQ Debug] Work Item: ${item.workItemId} - Target BOQ: nr=${nr}, r=${r}`);
             return total + nr + r;
         }, 0);
+
+        console.log(`[BOQ Debug] Total Target BOQ: ${totalTargetBOQ}`);
 
         const totalCompletedBOQ = allActivityDetails.reduce((total, detail) => {
             const nr = detail.actualQuantity?.nr || 0;
             const r = detail.actualQuantity?.r || 0;
+            console.log(`[BOQ Debug] Activity Detail: ${detail.workItemId?._id || detail.workItemId} - Actual Quantity: nr=${nr}, r=${r}`);
             return total + nr + r;
         }, 0);
+
+        console.log(`[BOQ Debug] Total Completed BOQ: ${totalCompletedBOQ}`);
 
         const remainingBOQ = totalTargetBOQ - totalCompletedBOQ;
 
         // Calculate BOQ-based progress percentage: (completed / target) * 100
         const boqProgressPercentage = totalTargetBOQ > 0 ? (totalCompletedBOQ / totalTargetBOQ) * 100 : 0;
+
+        console.log(`[BOQ Debug] BOQ Progress Percentage: ${boqProgressPercentage}%`);
 
         const spkObj = spk.toObject();
         return {
@@ -689,6 +708,215 @@ const Query = {
                 totalBudget: spkObj.budget || 0,
                 totalSpent: totalCosts,
                 remainingBudget: (spkObj.budget || 0) - totalCosts
+            },
+            createdAt: spkObj.createdAt.toISOString(),
+            updatedAt: spkObj.updatedAt.toISOString()
+        };
+    },
+
+    spkWithProgressBySpkId: async (_, { spkId }, { user }) => {
+        if (!user) throw new Error('Not authenticated');
+
+        const spk = await SPK.findById(spkId)
+            .populate({
+                path: 'location',
+                select: 'id name'
+            })
+            .populate({
+                path: 'workItems.workItemId',
+                populate: [
+                    {
+                        path: 'categoryId',
+                        select: 'id name'
+                    },
+                    {
+                        path: 'subCategoryId',
+                        select: 'id name'
+                    },
+                    {
+                        path: 'unitId',
+                        select: 'id name'
+                    }
+                ]
+            });
+
+        if (!spk) throw new Error('SPK not found');
+
+        console.log(`[SPK Progress Summary] SPK ID: ${spkId}`);
+
+        // Get all daily activities for this SPK
+        const dailyActivities = await DailyActivity.find({ spkId: spk._id }) || [];
+
+        // Get all activity details for these daily activities
+        const activityDetails = await ActivityDetail.find({
+            dailyActivityId: { $in: dailyActivities.map(da => da._id) }
+        }).populate('workItemId');
+
+        console.log(`[SPK Progress Summary] Activity Details Count: ${activityDetails.length}`);
+
+        // Group activity details by work item ID to calculate progress per work item
+        const progressByWorkItem = {};
+        
+        activityDetails.forEach(detail => {
+            if (!detail.workItemId) return;
+            
+            const workItemId = detail.workItemId._id.toString();
+            if (!progressByWorkItem[workItemId]) {
+                progressByWorkItem[workItemId] = {
+                    totalNr: 0,
+                    totalR: 0
+                };
+            }
+            
+            progressByWorkItem[workItemId].totalNr += detail.actualQuantity?.nr || 0;
+            progressByWorkItem[workItemId].totalR += detail.actualQuantity?.r || 0;
+        });
+
+        console.log(`[SPK Progress Summary] Progress by Work Item:`, progressByWorkItem);
+
+        // Calculate SPK duration in days
+        let spkDurationDays = 1; // Default to 1 day if no dates provided
+        if (spk.startDate && spk.endDate) {
+            const startDate = new Date(spk.startDate);
+            const endDate = new Date(spk.endDate);
+            spkDurationDays = Math.max(1, Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1);
+        }
+
+        console.log(`[SPK Progress Summary] SPK Duration: ${spkDurationDays} days`);
+
+        // Calculate progress for each work item in SPK
+        const workItemsWithProgress = spk.workItems.map(spkWorkItem => {
+            const workItemData = spkWorkItem.workItemId;
+            if (!workItemData) return null;
+
+            const workItemId = workItemData._id.toString();
+            const boqVolume = {
+                nr: spkWorkItem.boqVolume?.nr || 0,
+                r: spkWorkItem.boqVolume?.r || 0
+            };
+
+            const completedVolume = progressByWorkItem[workItemId] || { totalNr: 0, totalR: 0 };
+            const completedNr = completedVolume.totalNr;
+            const completedR = completedVolume.totalR;
+
+            const remainingNr = Math.max(0, boqVolume.nr - completedNr);
+            const remainingR = Math.max(0, boqVolume.r - completedR);
+
+            // Calculate daily target
+            const dailyTarget = {
+                nr: boqVolume.nr / spkDurationDays,
+                r: boqVolume.r / spkDurationDays
+            };
+
+            // Calculate progress percentage
+            const totalTarget = boqVolume.nr + boqVolume.r;
+            const totalCompleted = completedNr + completedR;
+            const progressPercentage = totalTarget > 0 ? (totalCompleted / totalTarget) * 100 : 0;
+
+            // Calculate financial progress
+            const nrRate = workItemData.rates?.nr?.rate || 0;
+            const rRate = workItemData.rates?.r?.rate || 0;
+            const totalAmount = (boqVolume.nr * nrRate) + (boqVolume.r * rRate);
+            const spentAmount = (completedNr * nrRate) + (completedR * rRate);
+            const remainingAmount = totalAmount - spentAmount;
+
+            return {
+                id: workItemData._id.toString(),
+                name: workItemData.name || '',
+                description: workItemData.description || '',
+                category: workItemData.categoryId ? {
+                    id: workItemData.categoryId._id.toString(),
+                    name: workItemData.categoryId.name || ''
+                } : null,
+                subCategory: workItemData.subCategoryId ? {
+                    id: workItemData.subCategoryId._id.toString(),
+                    name: workItemData.subCategoryId.name || ''
+                } : null,
+                unit: workItemData.unitId ? {
+                    id: workItemData.unitId._id.toString(),
+                    name: workItemData.unitId.name || ''
+                } : null,
+                rates: {
+                    nr: {
+                        rate: nrRate,
+                        description: workItemData.rates?.nr?.description || 'Non-remote rate'
+                    },
+                    r: {
+                        rate: rRate,
+                        description: workItemData.rates?.r?.description || 'Remote rate'
+                    }
+                },
+                boqVolume: {
+                    nr: boqVolume.nr,
+                    r: boqVolume.r
+                },
+                completedVolume: {
+                    nr: completedNr,
+                    r: completedR
+                },
+                remainingVolume: {
+                    nr: remainingNr,
+                    r: remainingR
+                },
+                dailyTarget: {
+                    nr: Math.ceil(dailyTarget.nr * 100) / 100,
+                    r: Math.ceil(dailyTarget.r * 100) / 100
+                },
+                progressPercentage: Math.round(progressPercentage * 100) / 100,
+                amount: totalAmount,
+                spentAmount: spentAmount,
+                remainingAmount: remainingAmount
+            };
+        }).filter(Boolean);
+
+        // Calculate overall progress
+        const totalTargetBOQ = spk.workItems.reduce((total, item) => {
+            const nr = item.boqVolume?.nr || 0;
+            const r = item.boqVolume?.r || 0;
+            return total + nr + r;
+        }, 0);
+
+        const totalCompletedBOQ = Object.values(progressByWorkItem).reduce((total, progress) => {
+            return total + progress.totalNr + progress.totalR;
+        }, 0);
+
+        const remainingBOQ = totalTargetBOQ - totalCompletedBOQ;
+        const overallProgressPercentage = totalTargetBOQ > 0 ? (totalCompletedBOQ / totalTargetBOQ) * 100 : 0;
+
+        // Calculate financial progress
+        const totalBudget = spk.budget || 0;
+        const totalSpent = workItemsWithProgress.reduce((total, item) => total + item.spentAmount, 0);
+        const remainingBudget = totalBudget - totalSpent;
+
+        console.log(`[SPK Progress Summary] Overall Progress: ${overallProgressPercentage}%`);
+        console.log(`[SPK Progress Summary] Total Target BOQ: ${totalTargetBOQ}, Completed: ${totalCompletedBOQ}`);
+
+        const spkObj = spk.toObject();
+        return {
+            id: spkObj._id.toString(),
+            spkNo: spkObj.spkNo,
+            wapNo: spkObj.wapNo,
+            title: spkObj.title,
+            projectName: spkObj.projectName,
+            date: spkObj.date.toISOString(),
+            contractor: spkObj.contractor,
+            workDescription: spkObj.workDescription,
+            location: {
+                id: spkObj.location?._id?.toString() || spkObj.location?.toString(),
+                name: spkObj.location?.name || ''
+            },
+            startDate: spkObj.startDate ? spkObj.startDate.toISOString() : null,
+            endDate: spkObj.endDate ? spkObj.endDate.toISOString() : null,
+            budget: totalBudget,
+            workItems: workItemsWithProgress,
+            totalProgress: {
+                percentage: Math.round(overallProgressPercentage * 100) / 100,
+                totalTargetBOQ: totalTargetBOQ,
+                totalCompletedBOQ: totalCompletedBOQ,
+                remainingBOQ: remainingBOQ,
+                totalBudget: totalBudget,
+                totalSpent: totalSpent,
+                remainingBudget: remainingBudget
             },
             createdAt: spkObj.createdAt.toISOString(),
             updatedAt: spkObj.updatedAt.toISOString()

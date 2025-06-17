@@ -527,6 +527,7 @@ const typeDefs = gql`
     isHoliday(date: String!): Boolean!
 
     spkDetailsWithProgress(spkId: ID!): SPKDetailsWithProgress!
+    spkWithProgressBySpkId(spkId: ID!): SPKWithProgressSummary!
 
     # ApproverSetting Queries
     approverSettings: [ApproverSetting!]!
@@ -1614,6 +1615,43 @@ const typeDefs = gql`
     totalProgress: TotalProgress!
     createdAt: String!
     updatedAt: String!
+  }
+
+  type SPKWithProgressSummary {
+    id: ID!
+    spkNo: String!
+    wapNo: String!
+    title: String!
+    projectName: String!
+    date: String!
+    contractor: String!
+    workDescription: String!
+    location: Area!
+    startDate: String
+    endDate: String
+    budget: Float!
+    workItems: [WorkItemProgressSummary!]!
+    totalProgress: TotalProgress!
+    createdAt: String!
+    updatedAt: String!
+  }
+
+  type WorkItemProgressSummary {
+    id: ID!
+    name: String!
+    description: String
+    category: Category
+    subCategory: SubCategory
+    unit: Unit
+    rates: WorkItemRates!
+    boqVolume: BOQVolume!
+    completedVolume: BOQVolume!
+    remainingVolume: BOQVolume!
+    dailyTarget: BOQVolume!
+    progressPercentage: Float!
+    amount: Float!
+    spentAmount: Float!
+    remainingAmount: Float!
   }
 
   # ApproverSetting Input
