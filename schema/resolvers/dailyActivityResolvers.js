@@ -505,7 +505,27 @@ const Query = {
 
             // Get daily activity with populated data
             const dailyActivity = await DailyActivity.findById(activityId)
-                .populate('spkId')
+                .populate({
+                    path: 'spkId',
+                    populate: {
+                        path: 'workItems.workItemId',
+                        select: 'name description unitId categoryId subCategoryId',
+                        populate: [
+                            {
+                                path: 'unitId',
+                                select: 'name code'
+                            },
+                            {
+                                path: 'categoryId',
+                                select: 'name'
+                            },
+                            {
+                                path: 'subCategoryId',
+                                select: 'name'
+                            }
+                        ]
+                    }
+                })
                 .populate('createdBy')
                 .populate('areaId')
                 .populate('approvedBy');
@@ -556,6 +576,86 @@ const Query = {
                 const totalActualVolume = totalActualNr + totalActualR;
 
                 progressPercentage = totalBoqVolume > 0 ? (totalActualVolume / totalBoqVolume) * 100 : 0;
+            }
+
+            // Calculate daily progress (NEW)
+            let dailyProgress = null;
+            if (dailyActivity.spkId && dailyActivity.spkId.workItems && dailyActivity.spkId.startDate && dailyActivity.spkId.endDate) {
+                // Calculate total working days
+                const startDate = new Date(dailyActivity.spkId.startDate);
+                const endDate = new Date(dailyActivity.spkId.endDate);
+                const totalWorkDays = Math.max(1, Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1);
+
+                // Calculate total BOQ volume from SPK
+                const totalBOQNr = dailyActivity.spkId.workItems.reduce((total, item) => total + (item.boqVolume?.nr || 0), 0);
+                const totalBOQR = dailyActivity.spkId.workItems.reduce((total, item) => total + (item.boqVolume?.r || 0), 0);
+                const totalBOQVolume = totalBOQNr + totalBOQR;
+
+                // Calculate daily target BOQ
+                const dailyTargetNr = totalBOQNr / totalWorkDays;
+                const dailyTargetR = totalBOQR / totalWorkDays;
+                const dailyTargetTotal = totalBOQVolume / totalWorkDays;
+
+                // Calculate actual BOQ for this day
+                const actualNr = activityDetails.reduce((total, detail) => total + (detail.actualQuantity?.nr || 0), 0);
+                const actualR = activityDetails.reduce((total, detail) => total + (detail.actualQuantity?.r || 0), 0);
+                const actualTotal = actualNr + actualR;
+
+                // Calculate daily progress percentage
+                const dailyProgressPercentage = dailyTargetTotal > 0 ? (actualTotal / dailyTargetTotal) * 100 : 0;
+
+                // Calculate work item progress
+                const workItemProgress = dailyActivity.spkId.workItems.map(spkWorkItem => {
+                    // Find corresponding activity detail
+                    const relatedDetail = activityDetails.find(detail => 
+                        detail.workItemId && detail.workItemId._id.toString() === (spkWorkItem.workItemId._id || spkWorkItem.workItemId).toString()
+                    );
+
+                    // Calculate target BOQ for this work item per day
+                    const itemTargetNr = (spkWorkItem.boqVolume?.nr || 0) / totalWorkDays;
+                    const itemTargetR = (spkWorkItem.boqVolume?.r || 0) / totalWorkDays;
+                    const itemTargetTotal = itemTargetNr + itemTargetR;
+
+                    // Get actual BOQ for this work item
+                    const itemActualNr = relatedDetail?.actualQuantity?.nr || 0;
+                    const itemActualR = relatedDetail?.actualQuantity?.r || 0;
+                    const itemActualTotal = itemActualNr + itemActualR;
+
+                    // Calculate progress percentage for this work item
+                    const itemProgressPercentage = itemTargetTotal > 0 ? (itemActualTotal / itemTargetTotal) * 100 : 0;
+
+                    return {
+                        workItemId: spkWorkItem.workItemId._id || spkWorkItem.workItemId,
+                        workItemName: spkWorkItem.workItemId?.name || 'Unknown Work Item',
+                        targetBOQ: {
+                            nr: Math.round(itemTargetNr * 100) / 100,
+                            r: Math.round(itemTargetR * 100) / 100,
+                            total: Math.round(itemTargetTotal * 100) / 100
+                        },
+                        actualBOQ: {
+                            nr: itemActualNr,
+                            r: itemActualR,
+                            total: itemActualTotal
+                        },
+                        progressPercentage: Math.round(itemProgressPercentage * 100) / 100,
+                        unit: spkWorkItem.workItemId?.unitId || null
+                    };
+                });
+
+                dailyProgress = {
+                    totalDailyTargetBOQ: {
+                        nr: Math.round(dailyTargetNr * 100) / 100,
+                        r: Math.round(dailyTargetR * 100) / 100,
+                        total: Math.round(dailyTargetTotal * 100) / 100
+                    },
+                    totalActualBOQ: {
+                        nr: actualNr,
+                        r: actualR,
+                        total: actualTotal
+                    },
+                    dailyProgressPercentage: Math.round(dailyProgressPercentage * 100) / 100,
+                    workItemProgress: workItemProgress
+                };
             }
 
             // Calculate budget usage
@@ -647,7 +747,8 @@ const Query = {
                 spkDetail: dailyActivity.spkId,
                 userDetail: dailyActivity.createdBy,
                 createdAt: dailyActivity.createdAt,
-                updatedAt: dailyActivity.updatedAt
+                updatedAt: dailyActivity.updatedAt,
+                dailyProgress: dailyProgress
             };
         } catch (error) {
             console.error('Error in getDailyActivityWithDetailsByActivityId:', error);

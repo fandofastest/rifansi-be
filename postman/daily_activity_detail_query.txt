@@ -31,6 +31,39 @@ query GetDailyActivityWithDetailsbyActivityId($activityId: ID!) {
     approvedAt
     rejectionReason
     budgetUsage
+    dailyProgress {
+      totalDailyTargetBOQ {
+        nr
+        r
+        total
+      }
+      totalActualBOQ {
+        nr
+        r
+        total
+      }
+      dailyProgressPercentage
+      workItemProgress {
+        workItemId
+        workItemName
+        targetBOQ {
+          nr
+          r
+          total
+        }
+        actualBOQ {
+          nr
+          r
+          total
+        }
+        progressPercentage
+        unit {
+          id
+          name
+          code
+        }
+      }
+    }
     activityDetails {
       id
       actualQuantity {

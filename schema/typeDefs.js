@@ -1418,6 +1418,7 @@ const typeDefs = gql`
     rejectionReason: String
     progressPercentage: Float!
     budgetUsage: Float!
+    dailyProgress: DailyProgress
     activityDetails: [ActivityDetail!]!
     equipmentLogs: [EquipmentLog!]!
     manpowerLogs: [ManpowerLog!]!
@@ -1427,6 +1428,29 @@ const typeDefs = gql`
     userDetail: User
     createdAt: String!
     updatedAt: String!
+  }
+
+  # Daily Progress type
+  type DailyProgress {
+    totalDailyTargetBOQ: DailyTargetBOQ!
+    totalActualBOQ: DailyTargetBOQ!
+    dailyProgressPercentage: Float!
+    workItemProgress: [WorkItemDailyProgress!]!
+  }
+
+  type DailyTargetBOQ {
+    nr: Float!
+    r: Float!
+    total: Float!
+  }
+
+  type WorkItemDailyProgress {
+    workItemId: ID!
+    workItemName: String!
+    targetBOQ: DailyTargetBOQ!
+    actualBOQ: DailyTargetBOQ!
+    progressPercentage: Float!
+    unit: Unit
   }
 
   type SPKWorkItemWithProgress {
