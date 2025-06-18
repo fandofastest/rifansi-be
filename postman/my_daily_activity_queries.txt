@@ -1,0 +1,157 @@
+# GetMyDailyActivity Query Examples
+
+# Basic query to get user's own daily activities with default pagination (limit: 10, skip: 0)
+query GetMyDailyActivity {
+  getMyDailyActivity {
+    activities {
+      id
+      date
+      location
+      weather
+      status
+      workStartTime
+      workEndTime
+      closingRemarks
+      isApproved
+      spk {
+        id
+        spkNo
+        title
+        projectName
+        startDate
+        endDate
+      }
+      createdAt
+      updatedAt
+    }
+    totalCount
+    hasMore
+    currentPage
+    totalPages
+  }
+}
+
+# Query with custom pagination
+query GetMyDailyActivityPaginated($limit: Int, $skip: Int) {
+  getMyDailyActivity(limit: $limit, skip: $skip) {
+    activities {
+      id
+      date
+      location
+      weather
+      status
+      workStartTime
+      workEndTime
+      closingRemarks
+      isApproved
+      spk {
+        id
+        spkNo
+        title
+        projectName
+      }
+      createdAt
+    }
+    totalCount
+    hasMore
+    currentPage
+    totalPages
+  }
+}
+
+# Query with date range filter
+query GetMyDailyActivityByDateRange($startDate: String, $endDate: String, $limit: Int) {
+  getMyDailyActivity(startDate: $startDate, endDate: $endDate, limit: $limit) {
+    activities {
+      id
+      date
+      location
+      weather
+      status
+      isApproved
+      spk {
+        spkNo
+        title
+        projectName
+      }
+      createdAt
+    }
+    totalCount
+    hasMore
+    currentPage
+    totalPages
+  }
+}
+
+# Variables examples:
+# For pagination (CORRECT - integers without quotes):
+# {
+#   "limit": 20,
+#   "skip": 0
+# }
+
+# For date range (CORRECT - dates as strings, numbers as integers):
+# {
+#   "startDate": "2024-01-01",
+#   "endDate": "2024-01-31",
+#   "limit": 15
+# }
+
+# For next page (CORRECT - assuming limit: 10):
+# {
+#   "limit": 10,
+#   "skip": 10
+# }
+
+# COMMON MISTAKES TO AVOID:
+# ❌ WRONG - Don't use quotes for numbers:
+# {
+#   "limit": "20",
+#   "skip": "0"
+# }
+
+# ❌ WRONG - Don't use boolean for skip:
+# {
+#   "limit": 20,
+#   "skip": true
+# }
+
+# READY-TO-USE EXAMPLE:
+# Copy this exact query and variables to test:
+
+# Query:
+query GetMyDailyActivityTest($limit: Int, $skip: Int) {
+  getMyDailyActivity(limit: $limit, skip: $skip) {
+    activities {
+      id
+      date
+      status
+      location
+      weather
+      spk {
+        spkNo
+        title
+        projectName
+      }
+    }
+    totalCount
+    hasMore
+    currentPage
+    totalPages
+  }
+}
+
+# Variables (copy exactly as JSON):
+{
+  "limit": 10,
+  "skip": 0
+}
+
+# Usage Notes:
+# - This query automatically filters by current authenticated user (no need to specify userId)
+# - Default limit is 10 items per page
+# - Activities are sorted by date descending (newest first)
+# - Only basic SPK information is populated for better performance
+# - Use hasMore field to determine if there are more items to load
+# - Use totalCount to show total number of user's activities
+# - Use currentPage and totalPages for pagination UI 

@@ -65,7 +65,170 @@ const Query = {
             .populate('createdBy');
     },
 
+    // Fast query for user's own daily activities with pagination
+    getMyDailyActivity: async (_, { limit = 10, skip = 0, startDate, endDate }, { user }) => {
+        if (!user) throw new Error('Not authenticated');
 
+        try {
+            console.log('getMyDailyActivity - User object keys:', Object.keys(user));
+            console.log('getMyDailyActivity - User object:', { 
+                id: user.id, 
+                _id: user._id,
+                userId: user.userId,
+                username: user.username 
+            });
+
+            // Try multiple ways to get user ID
+            const userId = user.id || user._id || user.userId;
+            console.log('getMyDailyActivity - Using userId:', userId, 'Type:', typeof userId);
+
+            // Build query filter for user's own activities
+            const query = { createdBy: userId };
+            console.log('getMyDailyActivity - Query filter:', query);
+
+            // Add date filters if provided
+            if (startDate || endDate) {
+                query.date = {};
+                if (startDate) query.date.$gte = new Date(startDate);
+                if (endDate) query.date.$lte = new Date(endDate);
+            }
+
+            // Debug: Let's see what activities exist in the database
+            const allActivities = await DailyActivity.find({}).limit(3).select('createdBy');
+            console.log('getMyDailyActivity - Sample activities createdBy:', allActivities.map(a => ({ 
+                id: a._id, 
+                createdBy: a.createdBy, 
+                createdByType: typeof a.createdBy 
+            })));
+
+            // Debug: Check what activities exist for this user using string conversion
+            const userActivitiesString = await DailyActivity.find({ 
+                createdBy: userId.toString() 
+            }).limit(3).select('createdBy');
+            console.log('getMyDailyActivity - User activities (string):', userActivitiesString.length);
+
+            // Debug: Check using ObjectId if available
+            const mongoose = require('mongoose');
+            let userActivitiesObjectId = [];
+            if (mongoose.Types.ObjectId.isValid(userId)) {
+                userActivitiesObjectId = await DailyActivity.find({ 
+                    createdBy: new mongoose.Types.ObjectId(userId) 
+                }).limit(3).select('createdBy');
+                console.log('getMyDailyActivity - User activities (ObjectId):', userActivitiesObjectId.length);
+            }
+
+            // Use the appropriate format based on what works
+            let finalQuery = query;
+            if (userActivitiesString.length > 0) {
+                finalQuery = { ...query, createdBy: userId.toString() };
+            } else if (userActivitiesObjectId.length > 0) {
+                finalQuery = { ...query, createdBy: new mongoose.Types.ObjectId(userId) };
+            }
+
+            console.log('getMyDailyActivity - Final query:', finalQuery);
+
+            // Get total count for pagination
+            const totalCount = await DailyActivity.countDocuments(finalQuery);
+            console.log('getMyDailyActivity - Total count:', totalCount);
+
+            // Calculate pagination info
+            const currentPage = Math.floor(skip / limit) + 1;
+            const totalPages = Math.ceil(totalCount / limit);
+            const hasMore = skip + limit < totalCount;
+
+            // Get activities with pagination - only populate basic SPK info for speed
+            const activities = await DailyActivity.find(finalQuery)
+                .populate({
+                    path: 'spkId',
+                    select: 'spkNo title projectName startDate endDate'
+                })
+                .populate('areaId')
+                .select('date location weather status workStartTime workEndTime closingRemarks isApproved createdBy createdAt updatedAt areaId')
+                .sort({ date: -1, createdAt: -1 })
+                .skip(skip)
+                .limit(limit);
+
+            console.log('getMyDailyActivity - Activities found:', activities.length);
+
+            return {
+                activities: activities.map(activity => ({
+                    id: activity._id,
+                    date: activity.date,
+                    location: activity.location,
+                    weather: activity.weather,
+                    status: activity.status,
+                    workStartTime: activity.workStartTime,
+                    workEndTime: activity.workEndTime,
+                    closingRemarks: activity.closingRemarks,
+                    isApproved: activity.isApproved,
+                    area: activity.areaId,
+                    spk: activity.spkId,
+                    createdAt: activity.createdAt,
+                    updatedAt: activity.updatedAt
+                })),
+                totalCount,
+                hasMore,
+                currentPage,
+                totalPages
+            };
+        } catch (error) {
+            console.error('Error in getMyDailyActivity:', error);
+            throw new Error('Terjadi kesalahan saat mengambil data laporan aktivitas harian');
+        }
+    },
+
+    // Simple debug query - just for testing user filter
+    getMyDailyActivityDebug: async (_, __, { user }) => {
+        if (!user) throw new Error('Not authenticated');
+        
+        try {
+            console.log('DEBUG - User:', user);
+            
+            // Test different user ID formats
+            const userIdFormats = [
+                user.id,
+                user._id,
+                user.userId,
+                user.id?.toString(),
+                user._id?.toString()
+            ].filter(Boolean);
+            
+            console.log('DEBUG - Testing user ID formats:', userIdFormats);
+            
+            for (const userId of userIdFormats) {
+                const count = await DailyActivity.countDocuments({ createdBy: userId });
+                console.log(`DEBUG - userId: ${userId} (${typeof userId}) -> count: ${count}`);
+                
+                if (count > 0) {
+                    const sample = await DailyActivity.findOne({ createdBy: userId });
+                    return {
+                        success: true,
+                        message: `Found ${count} activities with userId: ${userId}`,
+                        userIdUsed: userId,
+                        userIdType: typeof userId,
+                        sampleActivity: {
+                            id: sample._id,
+                            date: sample.date,
+                            createdBy: sample.createdBy
+                        }
+                    };
+                }
+            }
+            
+            return {
+                success: false,
+                message: 'No activities found with any user ID format',
+                userIdFormats: userIdFormats
+            };
+        } catch (error) {
+            console.error('Error in debug query:', error);
+            return {
+                success: false,
+                message: error.message,
+                error: error.toString()
+            };
+        }
+    },
 
     // Consolidated function to get daily activities with details
     getDailyActivityWithDetails: async (_, { areaId, userId, activityId, startDate, endDate }, { user }) => {
@@ -251,6 +414,165 @@ const Query = {
         } catch (error) {
             console.error('Error in getDailyActivityWithDetails:', error);
             throw new Error('Terjadi kesalahan saat mengambil data laporan harian');
+        }
+    },
+
+    // Get single daily activity with details by activity ID - focused for detail view
+    getDailyActivityWithDetailsByActivityId: async (_, { activityId }, { user }) => {
+        if (!user) throw new Error('Not authenticated');
+
+        try {
+            console.log('getDailyActivityWithDetailsByActivityId - activityId:', activityId);
+
+            // Get daily activity with populated data
+            const dailyActivity = await DailyActivity.findById(activityId)
+                .populate('spkId')
+                .populate('createdBy')
+                .populate('areaId')
+                .populate('approvedBy');
+
+            if (!dailyActivity) {
+                console.log('Daily activity not found');
+                return null;
+            }
+
+            console.log('Daily activity found:', dailyActivity._id);
+
+            // Get latest fuel price for equipment calculations
+            const latestFuelPrice = await FuelPrice.findOne()
+                .sort({ effectiveDate: -1 });
+
+            // Get all related data for this activity
+            const activityDetails = await ActivityDetail.find({ dailyActivityId: dailyActivity._id })
+                .populate({
+                    path: 'workItemId',
+                    populate: {
+                        path: 'unitId',
+                        select: 'name code'
+                    }
+                });
+
+            const equipmentLogs = await EquipmentLog.find({ dailyActivityId: dailyActivity._id })
+                .populate('equipmentId');
+
+            const manpowerLogs = await ManpowerLog.find({
+                dailyActivityId: dailyActivity._id,
+                isActive: true
+            }).populate('role');
+
+            const materialUsageLogs = await MaterialUsageLog.find({ dailyActivityId: dailyActivity._id })
+                .populate('materialId');
+
+            const otherCosts = await OtherCost.find({ dailyActivityId: dailyActivity._id });
+
+            // Calculate progress percentage
+            let progressPercentage = 0;
+            if (dailyActivity.spkId && dailyActivity.spkId.workItems) {
+                const totalBoqNr = dailyActivity.spkId.workItems.reduce((sum, item) => sum + (item.boqVolume.nr || 0), 0);
+                const totalBoqR = dailyActivity.spkId.workItems.reduce((sum, item) => sum + (item.boqVolume.r || 0), 0);
+                const totalBoqVolume = totalBoqNr + totalBoqR;
+
+                const totalActualNr = activityDetails.reduce((sum, detail) => sum + (detail.actualQuantity.nr || 0), 0);
+                const totalActualR = activityDetails.reduce((sum, detail) => sum + (detail.actualQuantity.r || 0), 0);
+                const totalActualVolume = totalActualNr + totalActualR;
+
+                progressPercentage = totalBoqVolume > 0 ? (totalActualVolume / totalBoqVolume) * 100 : 0;
+            }
+
+            // Calculate budget usage
+            const equipmentCosts = equipmentLogs.reduce((sum, log) => {
+                const fuelCost = (log.fuelIn || 0) * (latestFuelPrice ? latestFuelPrice.pricePerLiter : 0);
+                const rentalCost = (log.workingHour || 0) * (log.hourlyRate || 0);
+                return sum + fuelCost + rentalCost;
+            }, 0);
+
+            const manpowerCosts = manpowerLogs.reduce((sum, log) => {
+                return sum + ((log.personCount || 0) * (log.workingHours || 0) * (log.hourlyRate || 0));
+            }, 0);
+
+            const materialCosts = materialUsageLogs.reduce((sum, log) => {
+                return sum + ((log.quantity || 0) * (log.unitRate || 0));
+            }, 0);
+
+            const otherCostTotal = otherCosts.reduce((sum, cost) => sum + (cost.amount || 0), 0);
+
+            const totalCosts = equipmentCosts + manpowerCosts + materialCosts + otherCostTotal;
+            const budgetUsage = dailyActivity.spkId && dailyActivity.spkId.budget > 0 ? 
+                (totalCosts / dailyActivity.spkId.budget) * 100 : 0;
+
+            console.log('Processed activity details:', activityDetails.length);
+
+            return {
+                id: dailyActivity._id,
+                date: dailyActivity.date,
+                area: dailyActivity.areaId ? {
+                    id: dailyActivity.areaId._id,
+                    name: dailyActivity.areaId.name,
+                    location: dailyActivity.areaId.location
+                } : null,
+                location: dailyActivity.location,
+                weather: dailyActivity.weather,
+                status: dailyActivity.status,
+                workStartTime: dailyActivity.workStartTime,
+                workEndTime: dailyActivity.workEndTime,
+                startImages: dailyActivity.startImages || [],
+                finishImages: dailyActivity.finishImages || [],
+                closingRemarks: dailyActivity.closingRemarks,
+                isApproved: dailyActivity.isApproved,
+                approvedBy: dailyActivity.approvedBy,
+                approvedAt: dailyActivity.approvedAt,
+                rejectionReason: dailyActivity.rejectionReason,
+                progressPercentage,
+                budgetUsage,
+                activityDetails: activityDetails.map(detail => {
+                    if (!detail || !detail.workItemId) return null;
+                    try {
+                        return {
+                            ...detail.toObject(),
+                            workItem: detail.workItemId ? {
+                                ...detail.workItemId.toObject(),
+                                unit: detail.workItemId.unitId,
+                                rates: detail.workItemId.rates
+                            } : null
+                        };
+                    } catch (error) {
+                        console.error('Error processing activity detail:', error);
+                        return null;
+                    }
+                }).filter(Boolean),
+                equipmentLogs: equipmentLogs.map(log => {
+                    if (!log) return null;
+                    try {
+                        return {
+                            id: log._id,
+                            equipmentId: log.equipmentId,
+                            equipment: log.equipmentId,
+                            fuelIn: log.fuelIn,
+                            fuelRemaining: log.fuelRemaining,
+                            workingHour: log.workingHour,
+                            hourlyRate: log.hourlyRate,
+                            rentalRatePerDay: log.rentalRatePerDay,
+                            fuelPrice: latestFuelPrice ? latestFuelPrice.pricePerLiter : 0,
+                            isBrokenReported: log.isBrokenReported,
+                            brokenDescription: log.brokenDescription,
+                            remarks: log.remarks
+                        };
+                    } catch (error) {
+                        console.error('Error processing equipment log:', error);
+                        return null;
+                    }
+                }).filter(Boolean),
+                manpowerLogs: manpowerLogs.filter(Boolean),
+                materialUsageLogs: materialUsageLogs.filter(Boolean),
+                otherCosts: otherCosts.filter(Boolean),
+                spkDetail: dailyActivity.spkId,
+                userDetail: dailyActivity.createdBy,
+                createdAt: dailyActivity.createdAt,
+                updatedAt: dailyActivity.updatedAt
+            };
+        } catch (error) {
+            console.error('Error in getDailyActivityWithDetailsByActivityId:', error);
+            throw new Error('Terjadi kesalahan saat mengambil detail laporan harian');
         }
     }
 };

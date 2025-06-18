@@ -244,6 +244,49 @@ const typeDefs = gql`
     updatedAt: String!
   }
 
+  # Simple Daily Activity for fast loading (without heavy details)
+  type MyDailyActivityItem {
+    id: ID!
+    date: String!
+    location: String
+    weather: String
+    status: String!
+    workStartTime: String
+    workEndTime: String
+    closingRemarks: String
+    isApproved: Boolean
+    area: Area
+    spk: SPK
+    createdAt: String!
+    updatedAt: String!
+  }
+
+  # Paginated response for MyDailyActivity query
+  type MyDailyActivityResponse {
+    activities: [MyDailyActivityItem!]!
+    totalCount: Int!
+    hasMore: Boolean!
+    currentPage: Int!
+    totalPages: Int!
+  }
+
+  # Debug response type
+  type DebugResponse {
+    success: Boolean!
+    message: String!
+    userIdUsed: String
+    userIdType: String
+    userIdFormats: [String]
+    sampleActivity: DebugActivity
+    error: String
+  }
+
+  type DebugActivity {
+    id: ID!
+    date: String
+    createdBy: String
+  }
+
   # ActivityDetail
   type ActivityDetail {
     id: ID!
@@ -458,6 +501,17 @@ const typeDefs = gql`
     dailyActivitiesByDate(date: String!): [DailyActivity!]!
     dailyActivitiesByUser(userId: ID!): [DailyActivity!]!
     
+    # Fast query for user's own daily activities with pagination
+    getMyDailyActivity(
+      limit: Int = 10
+      skip: Int = 0
+      startDate: String
+      endDate: String
+    ): MyDailyActivityResponse!
+
+    # Debug query to test user filtering
+    getMyDailyActivityDebug: DebugResponse!
+    
     # Consolidated query to get daily activities with details (replaces multiple old queries)
     getDailyActivityWithDetails(
       areaId: ID
@@ -466,6 +520,9 @@ const typeDefs = gql`
       startDate: String
       endDate: String
     ): [LaporanByAreaDetails!]!
+    
+    # Get single daily activity with details by activity ID
+    getDailyActivityWithDetailsByActivityId(activityId: ID!): LaporanByAreaDetails
     
     # DEPRECATED - Use getDailyActivityWithDetails instead
     dailyActivitiesWithDetailsByUser(userId: ID!): [DailyActivityWithDetails!]! @deprecated(reason: "Use getDailyActivityWithDetails with userId parameter")

@@ -1,0 +1,214 @@
+# Daily Activity Detail Query - GetDailyActivityWithDetailsbyActivityId
+
+# Get single daily activity with complete details by activity ID
+query GetDailyActivityWithDetailsbyActivityId($activityId: ID!) {
+  getDailyActivityWithDetailsByActivityId(activityId: $activityId) {
+    id
+    date
+    area {
+      id
+      name
+      location {
+        type
+        coordinates
+      }
+    }
+    weather
+    status
+    workStartTime
+    workEndTime
+    startImages
+    finishImages
+    closingRemarks
+    isApproved
+    progressPercentage
+    approvedBy {
+      id
+      username
+      fullName
+      email
+    }
+    approvedAt
+    rejectionReason
+    budgetUsage
+    activityDetails {
+      id
+      actualQuantity {
+        nr
+        r
+      }
+      status
+      remarks
+      workItem {
+        id
+        name
+        description
+        unit {
+          id
+          name
+          code
+        }
+        rates {
+          nr {
+            rate
+            description
+          }
+          r {
+            rate
+            description
+          }
+        }
+        category {
+          id
+          name
+        }
+        subCategory {
+          id
+          name
+        }
+      }
+    }
+    equipmentLogs {
+      id
+      equipment {
+        id
+        equipmentCode
+        equipmentType
+        plateOrSerialNo
+        defaultOperator
+        year
+        serviceStatus
+      }
+      fuelIn
+      fuelRemaining
+      workingHour
+      hourlyRate
+      rentalRatePerDay
+      fuelPrice
+      isBrokenReported
+      remarks
+    }
+    manpowerLogs {
+      id
+      role
+      personCount
+      hourlyRate
+      workingHours
+      personnelRole {
+        id
+        roleCode
+        roleName
+        description
+        isPersonel
+      }
+    }
+    materialUsageLogs {
+      id
+      material {
+        id
+        name
+        description
+        unitRate
+        unit {
+          id
+          name
+          code
+        }
+      }
+      quantity
+      unitRate
+      remarks
+    }
+    otherCosts {
+      id
+      costType
+      description
+      amount
+      receiptNumber
+      remarks
+    }
+    spkDetail {
+      id
+      spkNo
+      wapNo
+      title
+      projectName
+      contractor
+      budget
+      startDate
+      endDate
+      workDescription
+      date
+      location {
+        id
+        name
+      }
+      workItems {
+        workItemId
+        boqVolume {
+          nr
+          r
+        }
+        amount
+        rates {
+          nr {
+            rate
+            description
+          }
+          r {
+            rate
+            description
+          }
+        }
+        description
+        workItem {
+          id
+          name
+          description
+          unit {
+            id
+            name
+            code
+          }
+          category {
+            id
+            name
+          }
+          subCategory {
+            id
+            name
+          }
+        }
+      }
+    }
+    userDetail {
+      id
+      username
+      fullName
+      email
+      phone
+      role {
+        id
+        roleCode
+        roleName
+        description
+      }
+      area {
+        id
+        name
+        location {
+          type
+          coordinates
+        }
+      }
+      lastLogin
+    }
+    createdAt
+    updatedAt
+  }
+}
+
+# Variables example:
+# {
+#   "activityId": "your-activity-id-here"
+# } 
