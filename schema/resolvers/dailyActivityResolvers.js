@@ -163,6 +163,7 @@ const Query = {
                     isApproved: activity.isApproved,
                     area: activity.areaId,
                     spk: activity.spkId,
+                    user: user,
                     createdAt: activity.createdAt,
                     updatedAt: activity.updatedAt
                 })),
@@ -174,6 +175,84 @@ const Query = {
         } catch (error) {
             console.error('Error in getMyDailyActivity:', error);
             throw new Error('Terjadi kesalahan saat mengambil data laporan aktivitas harian');
+        }
+    },
+
+    // Get activities by area with pagination - similar to getMyDailyActivity but filtered by area
+    getActivityByArea: async (_, { areaId, limit = 10, skip = 0, startDate, endDate }, { user }) => {
+        if (!user) throw new Error('Not authenticated');
+
+        try {
+            console.log('getActivityByArea - areaId:', areaId);
+            console.log('getActivityByArea - User:', { 
+                id: user.id, 
+                _id: user._id,
+                userId: user.userId,
+                username: user.username 
+            });
+
+            // Build query filter for activities in specified area
+            const query = { areaId: areaId };
+            console.log('getActivityByArea - Query filter:', query);
+
+            // Add date filters if provided
+            if (startDate || endDate) {
+                query.date = {};
+                if (startDate) query.date.$gte = new Date(startDate);
+                if (endDate) query.date.$lte = new Date(endDate);
+            }
+
+            console.log('getActivityByArea - Final query:', query);
+
+            // Get total count for pagination
+            const totalCount = await DailyActivity.countDocuments(query);
+            console.log('getActivityByArea - Total count:', totalCount);
+
+            // Calculate pagination info
+            const currentPage = Math.floor(skip / limit) + 1;
+            const totalPages = Math.ceil(totalCount / limit);
+            const hasMore = skip + limit < totalCount;
+
+            // Get activities with pagination - only populate basic SPK info for speed
+            const activities = await DailyActivity.find(query)
+                .populate({
+                    path: 'spkId',
+                    select: 'spkNo title projectName startDate endDate'
+                })
+                .populate('areaId')
+                .populate('createdBy', 'username fullName') // Also populate user info for area view
+                .select('date location weather status workStartTime workEndTime closingRemarks isApproved createdBy createdAt updatedAt areaId')
+                .sort({ date: -1, createdAt: -1 })
+                .skip(skip)
+                .limit(limit);
+
+            console.log('getActivityByArea - Activities found:', activities.length);
+
+            return {
+                activities: activities.map(activity => ({
+                    id: activity._id,
+                    date: activity.date,
+                    location: activity.location,
+                    weather: activity.weather,
+                    status: activity.status,
+                    workStartTime: activity.workStartTime,
+                    workEndTime: activity.workEndTime,
+                    closingRemarks: activity.closingRemarks,
+                    isApproved: activity.isApproved,
+                    area: activity.areaId,
+                    spk: activity.spkId,
+                    user: activity.createdBy, // Include user info for area view
+                    createdAt: activity.createdAt,
+                    updatedAt: activity.updatedAt
+                })),
+                totalCount,
+                hasMore,
+                currentPage,
+                totalPages
+            };
+        } catch (error) {
+            console.error('Error in getActivityByArea:', error);
+            throw new Error('Terjadi kesalahan saat mengambil data laporan aktivitas berdasarkan area');
         }
     },
 

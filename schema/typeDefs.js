@@ -257,6 +257,7 @@ const typeDefs = gql`
     isApproved: Boolean
     area: Area
     spk: SPK
+    user: User
     createdAt: String!
     updatedAt: String!
   }
@@ -503,6 +504,15 @@ const typeDefs = gql`
     
     # Fast query for user's own daily activities with pagination
     getMyDailyActivity(
+      limit: Int = 10
+      skip: Int = 0
+      startDate: String
+      endDate: String
+    ): MyDailyActivityResponse!
+
+    # Get activities by area with pagination
+    getActivityByArea(
+      areaId: ID!
       limit: Int = 10
       skip: Int = 0
       startDate: String

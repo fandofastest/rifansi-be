@@ -1,0 +1,55 @@
+# Get Activities by Area Query
+
+# Get daily activities by area with pagination
+query GetActivityByArea($areaId: ID!, $limit: Int, $skip: Int, $startDate: String, $endDate: String) {
+  getActivityByArea(areaId: $areaId, limit: $limit, skip: $skip, startDate: $startDate, endDate: $endDate) {
+    activities {
+      id
+      date
+      status
+      workStartTime
+      workEndTime
+      area {
+        id
+        name
+        location {
+          type
+          coordinates
+        }
+      }
+      weather
+      spk {
+        spkNo
+        title
+        projectName
+      }
+      user {
+        id
+        username
+        fullName
+      }
+      closingRemarks
+      isApproved
+      createdAt
+      updatedAt
+    }
+    totalCount
+    hasMore
+    currentPage
+    totalPages
+  }
+}
+
+# Variables example:
+# {
+#   "areaId": "your-area-id-here",
+#   "limit": 10,
+#   "skip": 0,
+#   "startDate": "2024-01-01",
+#   "endDate": "2024-12-31"
+# }
+
+# Minimal query example (only required parameter):
+# {
+#   "areaId": "675a1234567890abcdef1234"
+# } 
