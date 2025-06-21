@@ -309,7 +309,7 @@ const Query = {
         });
 
         console.log(`[SPK Progress Debug] Activity Details Count: ${activityDetails.length}`);
-        console.log(`[SPK Progress Debug] Activity Details with actualQuantity:`, 
+        console.log(`[SPK Progress Debug] Activity Details with actualQuantity:`,
             activityDetails.map(detail => ({
                 workItemId: detail.workItemId?._id || detail.workItemId,
                 actualQuantity: detail.actualQuantity
@@ -752,14 +752,44 @@ const Query = {
             dailyActivityId: { $in: dailyActivities.map(da => da._id) }
         }).populate('workItemId');
 
+        // Get all cost logs for comprehensive budget tracking
+        const materialLogs = await MaterialUsageLog.find({
+            dailyActivityId: { $in: dailyActivities.map(da => da._id) }
+        }).populate({
+            path: 'materialId',
+            select: 'name unitRate',
+            populate: {
+                path: 'unitId',
+                select: 'name'
+            }
+        }) || [];
+
+        const manpowerLogs = await ManpowerLog.find({
+            dailyActivityId: { $in: dailyActivities.map(da => da._id) }
+        }).populate({
+            path: 'role',
+            select: 'roleName'
+        }) || [];
+
+        const equipmentLogs = await EquipmentLog.find({
+            dailyActivityId: { $in: dailyActivities.map(da => da._id) }
+        }).populate({
+            path: 'equipmentId',
+            select: 'name equipmentCode'
+        }) || [];
+
+        const otherCosts = await OtherCost.find({
+            dailyActivityId: { $in: dailyActivities.map(da => da._id) }
+        }) || [];
+
         console.log(`[SPK Progress Summary] Activity Details Count: ${activityDetails.length}`);
 
         // Group activity details by work item ID to calculate progress per work item
         const progressByWorkItem = {};
-        
+
         activityDetails.forEach(detail => {
             if (!detail.workItemId) return;
-            
+
             const workItemId = detail.workItemId._id.toString();
             if (!progressByWorkItem[workItemId]) {
                 progressByWorkItem[workItemId] = {
@@ -767,12 +797,30 @@ const Query = {
                     totalR: 0
                 };
             }
-            
+
             progressByWorkItem[workItemId].totalNr += detail.actualQuantity?.nr || 0;
             progressByWorkItem[workItemId].totalR += detail.actualQuantity?.r || 0;
         });
 
         console.log(`[SPK Progress Summary] Progress by Work Item:`, progressByWorkItem);
+
+        // Calculate total actual costs
+        const totalMaterialCost = materialLogs.reduce((total, log) =>
+            total + ((log.quantity || 0) * (log.unitRate || log.materialId?.unitRate || 0)), 0);
+
+        const totalManpowerCost = manpowerLogs.reduce((total, log) =>
+            total + ((log.personCount || 0) * (log.workingHours || 0) * (log.hourlyRate || 0)), 0);
+
+        const totalEquipmentCost = equipmentLogs.reduce((total, log) => {
+            const rentalRate = log.hourlyRate || 0;
+            const maintenanceCost = log.maintenanceCost || 0;
+            const fuelCost = (log.fuelIn || 0) * (log.fuelPrice || 0);
+            return total + ((log.workingHour || 0) * rentalRate) + maintenanceCost + fuelCost;
+        }, 0);
+
+        const totalOtherCost = otherCosts.reduce((total, cost) => total + (cost.amount || 0), 0);
+
+        const totalActualCost = totalMaterialCost + totalManpowerCost + totalEquipmentCost + totalOtherCost;
 
         // Calculate SPK duration in days
         let spkDurationDays = 1; // Default to 1 day if no dates provided
@@ -784,7 +832,7 @@ const Query = {
 
         console.log(`[SPK Progress Summary] SPK Duration: ${spkDurationDays} days`);
 
-        // Calculate progress for each work item in SPK
+        // Calculate progress for each work item in SPK with enhanced details
         const workItemsWithProgress = spk.workItems.map(spkWorkItem => {
             const workItemData = spkWorkItem.workItemId;
             if (!workItemData) return null;
@@ -808,7 +856,7 @@ const Query = {
                 r: boqVolume.r / spkDurationDays
             };
 
-            // Calculate progress percentage
+            // Calculate progress percentage for individual work item
             const totalTarget = boqVolume.nr + boqVolume.r;
             const totalCompleted = completedNr + completedR;
             const progressPercentage = totalTarget > 0 ? (totalCompleted / totalTarget) * 100 : 0;
@@ -819,6 +867,10 @@ const Query = {
             const totalAmount = (boqVolume.nr * nrRate) + (boqVolume.r * rRate);
             const spentAmount = (completedNr * nrRate) + (completedR * rRate);
             const remainingAmount = totalAmount - spentAmount;
+
+            // Calculate completion status
+            const isCompleted = progressPercentage >= 100;
+            const isOnTrack = progressPercentage >= (totalCompleted / totalTarget) * 100;
 
             return {
                 id: workItemData._id.toString(),
@@ -865,11 +917,15 @@ const Query = {
                 progressPercentage: Math.round(progressPercentage * 100) / 100,
                 amount: totalAmount,
                 spentAmount: spentAmount,
-                remainingAmount: remainingAmount
+                remainingAmount: remainingAmount,
+                // Enhanced progress details
+                isCompleted: isCompleted,
+                isOnTrack: isOnTrack,
+                efficiencyRatio: totalAmount > 0 ? (spentAmount / totalAmount) * 100 : 0
             };
         }).filter(Boolean);
 
-        // Calculate overall progress
+        // Calculate overall progress with enhanced details
         const totalTargetBOQ = spk.workItems.reduce((total, item) => {
             const nr = item.boqVolume?.nr || 0;
             const r = item.boqVolume?.r || 0;
@@ -883,13 +939,48 @@ const Query = {
         const remainingBOQ = totalTargetBOQ - totalCompletedBOQ;
         const overallProgressPercentage = totalTargetBOQ > 0 ? (totalCompletedBOQ / totalTargetBOQ) * 100 : 0;
 
-        // Calculate financial progress
+        // Enhanced financial progress calculations
         const totalBudget = spk.budget || 0;
-        const totalSpent = workItemsWithProgress.reduce((total, item) => total + item.spentAmount, 0);
-        const remainingBudget = totalBudget - totalSpent;
+        const totalPlannedCost = workItemsWithProgress.reduce((total, item) => total + item.amount, 0);
+        const totalSpentFromWorkItems = workItemsWithProgress.reduce((total, item) => total + item.spentAmount, 0);
+        const remainingBudget = totalBudget - totalActualCost;
+
+        // Calculate completion statistics
+        const completedWorkItems = workItemsWithProgress.filter(item => item.isCompleted).length;
+        const totalWorkItems = workItemsWithProgress.length;
+        const workItemCompletionPercentage = totalWorkItems > 0 ? (completedWorkItems / totalWorkItems) * 100 : 0;
+
+        // Calculate budget utilization details
+        const budgetUtilizationPercentage = totalBudget > 0 ? (totalActualCost / totalBudget) * 100 : 0;
+        const plannedVsActualRatio = totalPlannedCost > 0 ? (totalActualCost / totalPlannedCost) * 100 : 0;
+
+        // Enhanced cost breakdown
+        const costBreakdown = {
+            materials: {
+                amount: totalMaterialCost,
+                percentage: totalActualCost > 0 ? (totalMaterialCost / totalActualCost) * 100 : 0,
+                count: materialLogs.length
+            },
+            manpower: {
+                amount: totalManpowerCost,
+                percentage: totalActualCost > 0 ? (totalManpowerCost / totalActualCost) * 100 : 0,
+                count: manpowerLogs.length
+            },
+            equipment: {
+                amount: totalEquipmentCost,
+                percentage: totalActualCost > 0 ? (totalEquipmentCost / totalActualCost) * 100 : 0,
+                count: equipmentLogs.length
+            },
+            others: {
+                amount: totalOtherCost,
+                percentage: totalActualCost > 0 ? (totalOtherCost / totalActualCost) * 100 : 0,
+                count: otherCosts.length
+            }
+        };
 
         console.log(`[SPK Progress Summary] Overall Progress: ${overallProgressPercentage}%`);
         console.log(`[SPK Progress Summary] Total Target BOQ: ${totalTargetBOQ}, Completed: ${totalCompletedBOQ}`);
+        console.log(`[SPK Progress Summary] Budget Utilization: ${budgetUtilizationPercentage}%`);
 
         const spkObj = spk.toObject();
         return {
@@ -915,8 +1006,23 @@ const Query = {
                 totalCompletedBOQ: totalCompletedBOQ,
                 remainingBOQ: remainingBOQ,
                 totalBudget: totalBudget,
-                totalSpent: totalSpent,
-                remainingBudget: remainingBudget
+                totalSpent: totalActualCost,
+                remainingBudget: remainingBudget,
+                // Enhanced progress details
+                workItemCompletionPercentage: Math.round(workItemCompletionPercentage * 100) / 100,
+                completedWorkItems: completedWorkItems,
+                totalWorkItems: totalWorkItems,
+                budgetUtilizationPercentage: Math.round(budgetUtilizationPercentage * 100) / 100,
+                plannedVsActualCostRatio: Math.round(plannedVsActualRatio * 100) / 100,
+                totalPlannedCost: totalPlannedCost,
+                isOverBudget: totalActualCost > totalBudget,
+                costBreakdown: costBreakdown,
+                // Additional metrics
+                averageItemProgress: workItemsWithProgress.length > 0 ?
+                    workItemsWithProgress.reduce((sum, item) => sum + item.progressPercentage, 0) / workItemsWithProgress.length : 0,
+                onTrackItems: workItemsWithProgress.filter(item => item.isOnTrack).length,
+                projectDuration: spkDurationDays,
+                remainingDays: spk.endDate ? Math.max(0, Math.ceil((new Date(spk.endDate) - new Date()) / (1000 * 60 * 60 * 24))) : 0
             },
             createdAt: spkObj.createdAt.toISOString(),
             updatedAt: spkObj.updatedAt.toISOString()

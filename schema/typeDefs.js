@@ -1592,6 +1592,33 @@ const typeDefs = gql`
     totalBudget: Float!
     totalSpent: Float!
     remainingBudget: Float!
+    # Enhanced progress details
+    workItemCompletionPercentage: Float!
+    completedWorkItems: Int!
+    totalWorkItems: Int!
+    budgetUtilizationPercentage: Float!
+    plannedVsActualCostRatio: Float!
+    totalPlannedCost: Float!
+    isOverBudget: Boolean!
+    costBreakdown: CostBreakdownSummary!
+    # Additional metrics
+    averageItemProgress: Float!
+    onTrackItems: Int!
+    projectDuration: Int!
+    remainingDays: Int!
+  }
+
+  type CostBreakdownSummary {
+    materials: CostCategorySummary!
+    manpower: CostCategorySummary!
+    equipment: CostCategorySummary!
+    others: CostCategorySummary!
+  }
+
+  type CostCategorySummary {
+    amount: Float!
+    percentage: Float!
+    count: Int!
   }
 
   type CostItem {
@@ -1743,6 +1770,10 @@ const typeDefs = gql`
     amount: Float!
     spentAmount: Float!
     remainingAmount: Float!
+    # Enhanced progress details
+    isCompleted: Boolean!
+    isOnTrack: Boolean!
+    efficiencyRatio: Float!
   }
 
   # ApproverSetting Input

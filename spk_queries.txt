@@ -343,6 +343,10 @@ query GetSPKWithProgressBySpkId($spkId: ID!) {
       amount
       spentAmount
       remainingAmount
+      # Enhanced progress details
+      isCompleted
+      isOnTrack
+      efficiencyRatio
     }
     totalProgress {
       percentage
@@ -352,6 +356,41 @@ query GetSPKWithProgressBySpkId($spkId: ID!) {
       totalBudget
       totalSpent
       remainingBudget
+      # Enhanced progress details
+      workItemCompletionPercentage
+      completedWorkItems
+      totalWorkItems
+      budgetUtilizationPercentage
+      plannedVsActualCostRatio
+      totalPlannedCost
+      isOverBudget
+      costBreakdown {
+        materials {
+          amount
+          percentage
+          count
+        }
+        manpower {
+          amount
+          percentage
+          count
+        }
+        equipment {
+          amount
+          percentage
+          count
+        }
+        others {
+          amount
+          percentage
+          count
+        }
+      }
+      # Additional metrics
+      averageItemProgress
+      onTrackItems
+      projectDuration
+      remainingDays
     }
     createdAt
     updatedAt
