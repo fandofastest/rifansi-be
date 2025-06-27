@@ -6,7 +6,8 @@ const fs = require('fs');
 const {
   importExcelToSPK,
   importCompleteWAPBOQ,
-  testExtractWAPMetadata
+  testExtractWAPMetadata,
+  importAuto
 } = require('../scripts/importExcell');
 
 // Konfigurasi multer untuk menyimpan file upload
@@ -181,50 +182,36 @@ router.post('/import-auto', upload.single('excelFile'), async (req, res) => {
     const filePath = req.file.path;
     console.log(`📥 File berhasil diupload (auto-detect): ${filePath}`);
 
-    // Auto-detect format berdasarkan sheets yang ada
-    const XLSX = require('xlsx');
-    const workbook = XLSX.readFile(filePath);
-    const sheetNames = Object.keys(workbook.Sheets);
-
-    console.log(`📋 Sheets ditemukan: ${sheetNames.join(', ')}`);
-
-    let result;
-    let format;
-
-    if (sheetNames.includes('WAP') && sheetNames.includes('BOQ.')) {
-      // Format WAP
-      console.log('🎯 Terdeteksi format WAP');
-      result = await importCompleteWAPBOQ(filePath);
-      format = 'wap';
-    } else if (sheetNames.includes('BOQ')) {
-      // Format lama
-      console.log('🎯 Terdeteksi format lama');
-      await importExcelToSPK(filePath);
-      format = 'old';
-      result = { message: 'Import format lama berhasil' };
-    } else {
-      throw new Error('Format Excel tidak dikenali. Pastikan ada sheet WAP+BOQ. atau sheet BOQ');
-    }
+    // Gunakan importAuto
+    const result = await importAuto(filePath);
 
     // Hapus file setelah diproses
     fs.unlinkSync(filePath);
 
-    return res.status(200).json({
-      success: true,
-      message: `SPK format ${format.toUpperCase()} berhasil diimport (auto-detected)`,
-      file: req.file.originalname,
-      format: format,
-      sheets: sheetNames,
-      data: format === 'wap' ? {
-        spkId: result.spk._id,
-        spkNo: result.spk.spkNo,
-        wapNo: result.spk.wapNo,
-        title: result.spk.title,
-        budget: result.spk.budget,
-        workItemsCount: result.spk.workItems.length,
-        stats: result.stats
-      } : result
-    });
+    // Response fleksibel tergantung hasil
+    if (result && result.spk) {
+      return res.status(200).json({
+        success: true,
+        message: 'SPK berhasil diimport (auto)',
+        file: req.file.originalname,
+        data: {
+          spkId: result.spk._id,
+          spkNo: result.spk.spkNo,
+          wapNo: result.spk.wapNo,
+          title: result.spk.title,
+          budget: result.spk.budget,
+          workItemsCount: result.spk.workItems.length,
+          stats: result.stats
+        }
+      });
+    } else {
+      return res.status(200).json({
+        success: true,
+        message: 'SPK berhasil diimport (auto)',
+        file: req.file.originalname,
+        data: result
+      });
+    }
   } catch (error) {
     console.error('❌ Error importing SPK (auto-detect):', error);
 

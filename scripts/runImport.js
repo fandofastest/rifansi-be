@@ -5,7 +5,8 @@ const {
   testExtractWAPMetadata,
   displayBOQItems,
   importAndDisplayBOQItems,
-  importCompleteWAPBOQ
+  importCompleteWAPBOQ,
+  importCompleteWapBoqv2
 } = require("./importExcell.js");
 
 async function main() {
@@ -27,6 +28,7 @@ async function main() {
       console.error("  boq      - Tampilkan semua item BOQ (tidak save ke DB)");
       console.error("  save-boq - Import BOQ ke database dan tampilkan hasil");
       console.error("  complete - Import lengkap WAP + BOQ sekaligus ⭐");
+      console.error("  complete-v2 - Import lengkap WAP + BOQ (versi duplikat)");
       console.error("\n💡 CONTOH:");
       console.error("  node runImport.js old ./SPKRIFANSI.xlsx");
       console.error("  node runImport.js wap ./WAP-BOQ-FILE.xlsx");
@@ -34,6 +36,7 @@ async function main() {
       console.error("  node runImport.js boq ./WAP-BOQ-FILE.xlsx");
       console.error("  node runImport.js save-boq ./WAP-BOQ-FILE.xlsx");
       console.error("  node runImport.js complete ./WAP-BOQ-FILE.xlsx  ⭐ REKOMENDASI");
+      console.error("  node runImport.js complete-v2 ./WAP-BOQ-FILE.xlsx  (versi duplikat)");
       process.exit(1);
     }
 
@@ -92,6 +95,11 @@ async function main() {
       case 'complete':
         console.log("🎯 Mode COMPLETE - Import lengkap WAP + BOQ");
         await importCompleteWAPBOQ(filePath);
+        break;
+
+      case 'complete-v2':
+        console.log("🎯 Mode COMPLETE-V2 - Import lengkap WAP + BOQ (versi 2)");
+        await importCompleteWapBoqv2(filePath);
         break;
 
       default:

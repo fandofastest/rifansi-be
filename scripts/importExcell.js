@@ -438,27 +438,14 @@ function detectBOQStartWAP(sheetData) {
     const row = sheetData[i];
     if (!Array.isArray(row)) continue;
 
-    // Cari baris header yang mengandung Description, Unit, Non Remote, Remote, Total Price
-    const hasDescription = row.some(cell =>
-      typeof cell === "string" && cell.toLowerCase().includes("description")
+    // Lebih fleksibel: minimal 3 dari 5 kata kunci
+    const keywords = ["description", "unit", "rate", "quantity", "total price"];
+    const found = keywords.filter(kw =>
+      row.some(cell => typeof cell === "string" && cell.toLowerCase().includes(kw))
     );
-    const hasUnit = row.some(cell =>
-      typeof cell === "string" && cell.toLowerCase().includes("unit")
-    );
-    const hasNonRemote = row.some(cell =>
-      typeof cell === "string" && cell.toLowerCase().includes("non remote")
-    );
-    const hasRemote = row.some(cell =>
-      typeof cell === "string" && cell.toLowerCase().includes("remote")
-    );
-    const hasTotalPrice = row.some(cell =>
-      typeof cell === "string" && cell.toLowerCase().includes("total price")
-    );
-
-    if (hasDescription && hasUnit && hasNonRemote && hasRemote && hasTotalPrice) {
-      console.log(`📍 Header BOQ ditemukan di baris ${i + 1}`);
-      console.log(`📋 Header: [${row.join(' | ')}]`);
-      return i + 1; // Return baris setelah header
+    if (found.length >= 3) {
+      console.log(`📍 Header BOQ ditemukan di baris ${i + 1} (dengan kata kunci: ${found.join(', ')})`);
+      return i + 1; // Baris setelah header
     }
   }
   return -1;
@@ -1168,21 +1155,15 @@ async function importAndDisplayBOQItems(filePath) {
       // Logika penentuan tipe baris
       if (stringValues.length === 1 && numericValues.length === 0) {
         // Hanya ada 1 string, tidak ada numeric → bisa kategori atau sub kategori
-        const singleString = stringValues[0];
-
-        if (!currentCategory) {
-          // Belum ada kategori → ini kategori
+        const singleString = String(stringValues[0]).trim();
+        // Jika ALL CAPS dan tanpa indentasi, kategori utama
+        if (singleString === singleString.toUpperCase() && !singleString.startsWith(' ')) {
           currentCategory = singleString;
+          currentSubCategory = "";
           categoryCount++;
           console.log(`   📂 KATEGORI ${categoryCount}: ${currentCategory}`);
-        } else if (singleString.toLowerCase().includes('install') ||
-          singleString.toLowerCase().includes('earthworks') ||
-          singleString.toLowerCase().includes('structural') ||
-          singleString.toLowerCase().includes('miscellaneous') ||
-          singleString.toLowerCase().includes('removal') ||
-          singleString.toLowerCase().includes('survey') ||
-          singleString.toLowerCase().includes('laboratory')) {
-          // Pattern sub kategori yang umum
+        } else if (singleString.startsWith(' ') || singleString.toLowerCase().includes('work')) {
+          // Jika ada indentasi atau mengandung kata 'work', subkategori
           currentSubCategory = singleString;
           subCategoryCount++;
           console.log(`   📁 SUB KATEGORI ${subCategoryCount}: ${currentSubCategory}`);
@@ -1193,7 +1174,6 @@ async function importAndDisplayBOQItems(filePath) {
           categoryCount++;
           console.log(`   📂 KATEGORI BARU ${categoryCount}: ${currentCategory}`);
         }
-
       } else if (stringValues.length >= 1 && numericValues.length > 0) {
         // Ada string DAN ada numeric → ini work item
         itemCount++;
@@ -1664,11 +1644,306 @@ async function importCompleteWAPBOQ(filePath) {
   }
 }
 
+async function importCompleteWapBoqv2(filePath) {
+  try {
+    console.log("📥 Memulai import lengkap WAP + BOQ...");
+    const workbook = XLSX.readFile(filePath);
+
+    // Cek sheet yang tersedia
+    console.log("📋 Sheet yang tersedia:", Object.keys(workbook.Sheets));
+
+    // Validasi sheets
+    if (!workbook.Sheets["WAP"]) throw new Error("❌ Sheet 'WAP' tidak ditemukan.");
+    // Cari sheet BOQ dengan atau tanpa titik
+    let boqSheetName = null;
+    if (workbook.Sheets["BOQ."]) {
+      boqSheetName = "BOQ.";
+    } else if (workbook.Sheets["BOQ"]) {
+      boqSheetName = "BOQ";
+    } else {
+      throw new Error("❌ Sheet 'BOQ.' atau 'BOQ' tidak ditemukan.");
+    }
+
+    const wapData = XLSX.utils.sheet_to_json(workbook.Sheets["WAP"], { header: 1 });
+    const boqData = XLSX.utils.sheet_to_json(workbook.Sheets[boqSheetName], { header: 1 });
+
+    console.log(`📊 WAP: ${wapData.length} baris | BOQ: ${boqData.length} baris`);
+
+    // ============== BAGIAN 1: EKSTRAKSI METADATA WAP ==============
+    console.log("\n" + "=".repeat(80));
+    console.log("📋 BAGIAN 1: EKSTRAKSI METADATA DARI SHEET WAP");
+    console.log("=".repeat(80));
+
+    const metadata = {};
+    for (const key in wapLabelMap) {
+      metadata[key] = getWAPLabelValue(wapData, key);
+      if (metadata[key]) {
+        console.log(`✅ ${key}: ${metadata[key]}`);
+      }
+    }
+
+    // Ekstrak work description dan budget
+    metadata.workDetailDescription = extractWorkDetailDescriptionWAP(wapData);
+    const budgetFromWAP = getWAPBudgetValue(wapData);
+
+    // Parse tanggal
+    const issuedDate = parseDateSafeWAP(metadata.issuedDate);
+    const startDate = parseDateSafeWAP(metadata.startDate);
+    const endDate = parseDateSafeWAP(metadata.endDate);
+
+    console.log(`📅 Issued Date: ${issuedDate ? issuedDate.toLocaleDateString('id-ID') : 'N/A'}`);
+    console.log(`📅 Start Date: ${startDate ? startDate.toLocaleDateString('id-ID') : 'N/A'}`);
+    console.log(`📅 End Date: ${endDate ? endDate.toLocaleDateString('id-ID') : 'N/A'}`);
+    console.log(`💰 Budget: ${budgetFromWAP ? budgetFromWAP.toLocaleString("id-ID") : 'N/A'}`);
+
+    // ============== BAGIAN 2: SETUP AREA ==============
+    console.log("\n" + "=".repeat(80));
+    console.log("📋 BAGIAN 2: SETUP AREA");
+    console.log("=".repeat(80));
+
+    const locationName = metadata.networkArea || metadata.location || "Unknown Location";
+    console.log(`🔍 Mencari/membuat area: "${locationName}"`);
+
+    const area = await findOrCreate(
+      Area,
+      { name: locationName },
+      { location: { type: 'Point', coordinates: [101.0, -1.0] } }
+    );
+
+    // ============== BAGIAN 3: PROSES BOQ ==============
+    console.log("\n" + "=".repeat(80));
+    console.log("📋 BAGIAN 3: PROSES BOQ DAN SIMPAN WORK ITEMS");
+    console.log("=".repeat(80));
+
+    const boqStart = detectBOQStartWAP(boqData);
+    if (boqStart <= 0) throw new Error("❌ Header BOQ tidak ditemukan.");
+
+    let currentCategory = "";
+    let currentSubCategory = "";
+    let itemCount = 0;
+    let categoryCount = 0;
+    let subCategoryCount = 0;
+    const workItems = [];
+
+    // Setelah header, skip 1 baris
+    let i = boqStart + 1;
+    while (i < boqData.length) {
+      // 1. Ambil kategori utama
+      const catRow = boqData[i];
+      // Skip baris jika row[0] mengandung 'TOTAL' atau row[8] adalah angka (bukan kategori)
+      const parseNum = v => {
+        if (v == null) return NaN;
+        return parseFloat(String(v).replace(/[^ -9.-]/g, '').replace(/^[\s\u00A0]+|[\s\u00A0]+$/g, ''));
+      };
+      if (!Array.isArray(catRow) || !catRow[0] || String(catRow[0]).trim() === "" ||
+        String(catRow[0]).toLowerCase().includes('total') ||
+        (!isNaN(parseNum(catRow[8])) && parseNum(catRow[8]) !== 0)) {
+        i++;
+        continue;
+      }
+      currentCategory = String(catRow[0]).trim();
+      categoryCount++;
+      console.log(`KATEGORI: ${currentCategory}`);
+      i++;
+      // 2. Ambil subkategori dari baris di bawah kategori, gabungkan cell 0-2
+      const subRow = boqData[i];
+      if (subRow && (subRow[0] || subRow[1] || subRow[2])) {
+        currentSubCategory = [subRow[0], subRow[1], subRow[2]]
+          .map(cell => (cell ? String(cell).trim() : ""))
+          .join(" ")
+          .replace(/scope of work/gi, "")
+          .replace(/\s+/g, " ")
+          .trim();
+        if (currentSubCategory) {
+          subCategoryCount++;
+          console.log(`  SUBKATEGORI: ${currentSubCategory}`);
+        }
+      } else {
+        currentSubCategory = "";
+      }
+      i++;
+      // 3. Proses work item di bawah subkategori
+      while (i < boqData.length) {
+        const row = boqData[i];
+        const parseNum = v => {
+          if (v == null) return NaN;
+          return parseFloat(String(v).replace(/[^ -9.-]/g, '').replace(/^[\s\u00A0]+|[\s\u00A0]+$/g, ''));
+        };
+        // Stop jika baris ini adalah kategori baru (huruf besar semua di cell 0)
+        if (typeof row[0] === 'string' && row[0] === row[0].toUpperCase() && row[0].trim().length > 0) break;
+        if (!row[2] || String(row[2]).trim() === "") { i++; continue; }
+        const isWorkItem = (
+          Array.isArray(row) &&
+          typeof row[2] === 'string' && row[2].trim() !== '' &&
+          (
+            !isNaN(parseNum(row[4])) ||
+            !isNaN(parseNum(row[6])) ||
+            !isNaN(parseNum(row[8]))
+          )
+        );
+        if (isWorkItem) {
+          let workItemName = row[2]?.toString().trim() || "";
+          let unit = row[3]?.toString().trim() || "Unit";
+          const nonRemoteRate = parseNum(row[4]);
+          const nonRemoteQty = parseNum(row[6]);
+          const totalPrice = parseNum(row[8]);
+          console.log(`    ITEM: ${workItemName} | Unit: ${unit} | NR Rate: ${nonRemoteRate} | NR Qty: ${nonRemoteQty} | Total: ${totalPrice}`);
+          try {
+            // Cari/buat kategori, subkategori, unit
+            const category = await findOrCreate(Category, { name: currentCategory }, { code: currentCategory.slice(0, 5) });
+            const subCategory = await findOrCreate(SubCategory, { name: currentSubCategory, categoryId: category._id });
+            const unitDoc = await findOrCreate(Unit, { name: unit }, { code: unit });
+
+            // Cari/buat work item
+            const workItemData = {
+              name: workItemName,
+              categoryId: category._id,
+              subCategoryId: subCategory._id,
+              unitId: unitDoc._id,
+              description: workItemName,
+              rates: {
+                nr: {
+                  rate: nonRemoteRate,
+                  description: 'Non-remote rate'
+                },
+                r: {
+                  rate: 0,
+                  description: 'Remote rate'
+                }
+              }
+            };
+            const workItem = await findOrCreate(WorkItem, { name: workItemName }, workItemData);
+            workItems.push({
+              workItemId: workItem._id,
+              boqVolume: { nr: nonRemoteQty, r: 0 },
+              rates: { nr: { rate: nonRemoteRate }, r: { rate: 0 } },
+              description: workItemName
+            });
+            itemCount++;
+            console.log(`      💾 Tersimpan: ${workItemName} (${category.name} > ${subCategory.name})`);
+          } catch (error) {
+            console.error(`      ❌ Error menyimpan work item: ${error.message}`);
+          }
+        }
+        i++;
+      }
+    }
+
+    // Gunakan budget dari WAP sheet, tapi validasi dengan BOQ jika perlu
+    let finalBudget = budgetFromWAP || 0;
+    const boqTotal = detectExplicitBudgetWAP(boqData);
+
+    if (boqTotal && Math.abs(finalBudget - boqTotal) > 1000) {
+      console.warn(`⚠️ Budget WAP (${finalBudget.toLocaleString("id-ID")}) berbeda dengan BOQ (${boqTotal.toLocaleString("id-ID")})`);
+      console.log(`📊 Menggunakan budget dari WAP: ${finalBudget.toLocaleString("id-ID")}`);
+    }
+
+    // Buat SPK
+    const spkData = {
+      spkNo: metadata.spkNo,
+      wapNo: metadata.wapNo,
+      title: metadata.workTitle,
+      projectName: metadata.projectName,
+      contractor: metadata.assignedTo,
+      date: issuedDate || new Date(),
+      startDate: startDate,
+      endDate: endDate,
+      duration: parseInt(metadata.duration) || 0,
+      workDescription: metadata.workDetailDescription,
+      location: area._id,
+      budget: finalBudget,
+      workItems
+    };
+
+    // Cek apakah SPK sudah ada
+    const existingSPK = await SPK.findOne({ spkNo: metadata.spkNo });
+    let newSPK;
+
+    if (existingSPK) {
+      console.log(`⚠️  SPK "${metadata.spkNo}" sudah ada, akan diupdate...`);
+      newSPK = await SPK.findByIdAndUpdate(existingSPK._id, spkData, { new: true });
+      console.log(`🔄 SPK "${metadata.spkNo}" berhasil diupdate.`);
+    } else {
+      newSPK = await SPK.create(spkData);
+      console.log(`🆕 SPK "${metadata.spkNo}" berhasil dibuat.`);
+    }
+
+    // ============== BAGIAN 5: RINGKASAN ==============
+    console.log("\n" + "=".repeat(80));
+    console.log("📊 RINGKASAN IMPORT LENGKAP");
+    console.log("=".repeat(80));
+
+    const totalWorkItems = await WorkItem.countDocuments();
+    const totalCategories = await Category.countDocuments();
+    const totalSubCategories = await SubCategory.countDocuments();
+    const totalUnits = await Unit.countDocuments();
+    const totalAreas = await Area.countDocuments();
+    const totalSPKs = await SPK.countDocuments();
+
+    console.log(`🎉 BERHASIL IMPORT SPK: ${metadata.spkNo}`);
+    console.log(`📋 SPK ID: ${newSPK._id}`);
+    console.log(`💰 Budget: ${(budgetFromWAP || 0).toLocaleString("id-ID")}`);
+    console.log(`📦 Work Items di SPK: ${workItems.length}`);
+    console.log(`📅 Periode: ${startDate ? startDate.toLocaleDateString('id-ID') : 'N/A'} - ${endDate ? endDate.toLocaleDateString('id-ID') : 'N/A'}`);
+
+    console.log(`\n📊 TOTAL DATA DI DATABASE:`);
+    console.log(`📄 Total SPKs: ${totalSPKs}`);
+    console.log(`📦 Total WorkItems: ${totalWorkItems}`);
+    console.log(`📂 Total Categories: ${totalCategories}`);
+    console.log(`📁 Total SubCategories: ${totalSubCategories}`);
+    console.log(`📏 Total Units: ${totalUnits}`);
+    console.log(`🌍 Total Areas: ${totalAreas}`);
+
+    return {
+      spk: newSPK,
+      stats: {
+        categoriesProcessed: categoryCount,
+        subCategoriesProcessed: subCategoryCount,
+        workItemsProcessed: itemCount,
+        totalInDB: {
+          spks: totalSPKs,
+          workItems: totalWorkItems,
+          categories: totalCategories,
+          subCategories: totalSubCategories,
+          units: totalUnits,
+          areas: totalAreas
+        }
+      }
+    };
+
+  } catch (error) {
+    console.error("❌ Error import:", error.message);
+    throw error;
+  }
+}
+
+// Tambahkan fungsi importAuto
+async function importAuto(filePath) {
+  try {
+    console.log('🔄 [AUTO] Mencoba import dengan importCompleteWAPBOQ (v1)...');
+    const result = await importCompleteWAPBOQ(filePath);
+    console.log('✅ [AUTO] Berhasil import dengan importCompleteWAPBOQ (v1)');
+    return result;
+  } catch (err) {
+    console.warn('⚠️ [AUTO] importCompleteWAPBOQ gagal, mencoba importCompleteWapBoqv2 (v2)...');
+    try {
+      const result2 = await importCompleteWapBoqv2(filePath);
+      console.log('✅ [AUTO] Berhasil import dengan importCompleteWapBoqv2 (v2)');
+      return result2;
+    } catch (err2) {
+      console.error('❌ [AUTO] Kedua metode import gagal.');
+      throw err2;
+    }
+  }
+}
+
 module.exports = {
   importExcelToSPK,           // Fungsi asli untuk format lama
   importExcelWAPToSPK,        // Fungsi baru untuk format WAP
   testExtractWAPMetadata,     // Fungsi test untuk format WAP
   displayBOQItems,            // Fungsi untuk tampilkan BOQ items
   importAndDisplayBOQItems,   // Fungsi untuk import dan tampilkan dari DB
-  importCompleteWAPBOQ        // Fungsi baru: import lengkap WAP + BOQ
+  importCompleteWAPBOQ,        // Fungsi baru: import lengkap WAP + BOQ
+  importCompleteWapBoqv2,      // Fungsi duplikat: import lengkap WAP + BOQ versi 2
+  importAuto
 };
