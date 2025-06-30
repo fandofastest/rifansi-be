@@ -316,30 +316,14 @@ const Query = {
         try {
             // Build query filter
             const query = {};
-
-            // Filter by activity ID if provided
-            if (activityId) {
-                query._id = activityId;
-            }
-
-            // Filter by area if provided
-            if (areaId) {
-                query.areaId = areaId;
-            }
-
-            // Filter by user if provided
-            if (userId) {
-                query.createdBy = userId;
-            }
-
-            // Filter by date range if provided
+            if (activityId) query._id = activityId;
+            if (areaId) query.areaId = areaId;
+            if (userId) query.createdBy = userId;
             if (startDate || endDate) {
                 query.date = {};
                 if (startDate) query.date.$gte = new Date(startDate);
                 if (endDate) query.date.$lte = new Date(endDate);
             }
-
-            console.log('Query filter:', query);
 
             // Get daily activities with populated data
             const dailyActivities = await DailyActivity.find(query)
@@ -349,70 +333,74 @@ const Query = {
                 .populate('approvedBy')
                 .sort({ date: -1 });
 
-            console.log('Daily activities found:', dailyActivities.length);
+            if (dailyActivities.length === 0) return [];
 
-            if (dailyActivities.length === 0) {
-                console.log('No daily activities found');
-                return [];
-            }
+            const dailyActivityIds = dailyActivities.map(da => da._id);
 
-            // Get latest fuel price for equipment calculations
-            const latestFuelPrice = await FuelPrice.findOne()
-                .sort({ effectiveDate: -1 });
+            // Ambil semua detail terkait sekaligus
+            const [activityDetails, equipmentLogs, manpowerLogs, materialUsageLogs, otherCosts, latestFuelPrice] = await Promise.all([
+                ActivityDetail.find({ dailyActivityId: { $in: dailyActivityIds } })
+                    .populate({
+                        path: 'workItemId',
+                        populate: {
+                            path: 'unitId',
+                            select: 'name code'
+                        }
+                    }),
+                EquipmentLog.find({ dailyActivityId: { $in: dailyActivityIds } })
+                    .populate('equipmentId'),
+                ManpowerLog.find({ dailyActivityId: { $in: dailyActivityIds }, isActive: true })
+                    .populate('role'),
+                MaterialUsageLog.find({ dailyActivityId: { $in: dailyActivityIds } })
+                    .populate('materialId'),
+                OtherCost.find({ dailyActivityId: { $in: dailyActivityIds } }),
+                FuelPrice.findOne().sort({ effectiveDate: -1 })
+            ]);
 
-            // Populate all related data for each activity
+            // Helper untuk group by dailyActivityId
+            const groupBy = (arr, key) => arr.reduce((acc, item) => {
+                const k = item[key]?.toString();
+                if (!k) return acc;
+                if (!acc[k]) acc[k] = [];
+                acc[k].push(item);
+                return acc;
+            }, {});
+
+            const activityDetailsByDA = groupBy(activityDetails, 'dailyActivityId');
+            const equipmentLogsByDA = groupBy(equipmentLogs, 'dailyActivityId');
+            const manpowerLogsByDA = groupBy(manpowerLogs, 'dailyActivityId');
+            const materialUsageLogsByDA = groupBy(materialUsageLogs, 'dailyActivityId');
+            const otherCostsByDA = groupBy(otherCosts, 'dailyActivityId');
+
+            // Bangun respons seperti sebelumnya
             const result = await Promise.all(
                 dailyActivities.map(async (da) => {
-                    const activityDetails = await ActivityDetail.find({ dailyActivityId: da._id })
-                        .populate({
-                            path: 'workItemId',
-                            populate: {
-                                path: 'unitId',
-                                select: 'name code'
-                            }
-                        });
+                    const daId = da._id.toString();
+                    const activityDetails = activityDetailsByDA[daId] || [];
+                    const equipmentLogs = equipmentLogsByDA[daId] || [];
+                    const manpowerLogs = manpowerLogsByDA[daId] || [];
+                    const materialUsageLogs = materialUsageLogsByDA[daId] || [];
+                    const otherCosts = otherCostsByDA[daId] || [];
 
-                    const equipmentLogs = await EquipmentLog.find({ dailyActivityId: da._id })
-                        .populate('equipmentId');
-
-                    const manpowerLogs = await ManpowerLog.find({
-                        dailyActivityId: da._id,
-                        isActive: true
-                    }).populate('role');
-
-                    const materialUsageLogs = await MaterialUsageLog.find({ dailyActivityId: da._id })
-                        .populate('materialId');
-
-                    const otherCosts = await OtherCost.find({ dailyActivityId: da._id });
-
-                    // Calculate progress percentage: (progress_volume_hari_ini / target_harian) * 100
+                    // Perhitungan progress dan budget usage tetap
                     let progressPercentage = 0;
                     if (da.spkId && da.spkId.workItems && da.spkId.startDate && da.spkId.endDate) {
-                        // Calculate total working days
                         const startDate = new Date(da.spkId.startDate);
                         const endDate = new Date(da.spkId.endDate);
                         const totalWorkDays = Math.max(1, Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1);
-
-                        // Calculate total BOQ volume from SPK
                         const totalBOQVolume = da.spkId.workItems.reduce((total, item) => {
                             const nr = item.boqVolume?.nr || 0;
                             const r = item.boqVolume?.r || 0;
                             return total + nr + r;
                         }, 0);
-
-                        // Calculate daily target
                         const targetHarian = totalBOQVolume / totalWorkDays;
-
-                        // Calculate actual volume for this day
                         const progressVolumeHariIni = activityDetails.reduce((total, detail) => {
                             const nr = detail.actualQuantity?.nr || 0;
                             const r = detail.actualQuantity?.r || 0;
                             return total + nr + r;
                         }, 0);
-
-                        // Calculate percentage: (progress_volume_hari_ini / target_harian) * 100
                         progressPercentage = targetHarian > 0 ? (progressVolumeHariIni / targetHarian) * 100 : 0;
-                        progressPercentage = Math.round(progressPercentage * 100) / 100; // Round to 2 decimal places
+                        progressPercentage = Math.round(progressPercentage * 100) / 100;
                     }
 
                     const budgetUsage = calculateBudgetUsagePercentage(activityDetails, da.spkId);
@@ -487,8 +475,6 @@ const Query = {
                     };
                 })
             );
-
-            console.log('Processed activities:', result.length);
             return result;
         } catch (error) {
             console.error('Error in getDailyActivityWithDetails:', error);

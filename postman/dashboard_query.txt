@@ -1,0 +1,85 @@
+query DashboardSummary {
+  dashboardSummary {
+    # Summary data
+    totalSPK
+    totalWorkItems
+    totalReports
+    totalDailyActivities
+    totalRepairReports
+    
+    # Monthly Sales data
+    monthlySales {
+      year
+      month
+      monthName
+      sales
+      cost
+      costBreakdown {
+        material
+        manpower
+        equipment
+        other
+      }
+      profit
+      profitMargin
+      spkCount
+    }
+    
+    # Monthly Capaian data
+    monthlyCapaian {
+      year
+      month
+      monthName
+      totalSPKActive
+      totalBudget
+      spkProgress {
+        spkId
+        spkTitle
+        spkBudget
+        activityCount
+      }
+    }
+    
+    # Chart data - SPK Performance (Top 10 SPK berdasarkan budget)
+    spkPerformance {
+      spkId
+      spkNo
+      title
+      projectName
+      budget
+      workItemsAmount
+      workItemsCount
+      date
+    }
+    
+    # Chart data - Cost Breakdown (Total cost per kategori)
+    costBreakdown {
+      material
+      manpower
+      equipment
+      other
+      total
+    }
+    
+    # Chart data - Monthly Trend (Sales trend)
+    monthlyTrend {
+      year
+      month
+      monthName
+      totalSales
+      spkCount
+    }
+    
+    # Chart data - Work Items Distribution (per kategori)
+    workItemsDistribution {
+      categoryName
+      count
+    }
+    
+    # Chart data - Activity Status Distribution
+    activityStatusDistribution {
+      status
+      count
+    }
+  }
+} 

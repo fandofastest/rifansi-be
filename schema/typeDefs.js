@@ -618,6 +618,8 @@ const typeDefs = gql`
     equipmentRepairReportsByCreator(createdBy: ID): [EquipmentRepairReport!]!
     myEquipmentRepairReports: [EquipmentRepairReport!]!
     pendingRepairReports: [EquipmentRepairReport!]!
+
+    dashboardSummary: DashboardSummary!
   }
 
   # Mutations
@@ -1644,8 +1646,10 @@ const typeDefs = gql`
   }
 
   type CostBreakdown {
-    totalCost: Float!
-    dailyActivities: [DailyActivityCost!]!
+    material: Float!
+    manpower: Float!
+    equipment: Float!
+    other: Float!
   }
 
   type DailyActivityCost {
@@ -1969,6 +1973,88 @@ const typeDefs = gql`
     repairCompletionDate: String
     repairNotes: String
     repairImages: [String!]
+  }
+
+  type MonthlySales {
+    year: Int!
+    month: Int!
+    monthName: String!
+    sales: Float!
+    cost: Float!
+    costBreakdown: CostBreakdown!
+    profit: Float!
+    profitMargin: Float!
+    spkCount: Int!
+  }
+
+  type SPKProgress {
+    spkId: ID!
+    spkTitle: String!
+    spkBudget: Float!
+    activityCount: Int!
+  }
+
+  type MonthlyCapaian {
+    year: Int!
+    month: Int!
+    monthName: String!
+    spkProgress: [SPKProgress!]!
+    totalSPKActive: Int!
+    totalBudget: Float!
+  }
+
+  type DashboardSummary {
+    totalSPK: Int!
+    totalWorkItems: Int!
+    totalReports: Int!
+    totalDailyActivities: Int!
+    totalRepairReports: Int!
+    monthlySales: [MonthlySales!]!
+    monthlyCapaian: [MonthlyCapaian!]!
+    # Chart data
+    spkPerformance: [SPKPerformance!]!
+    costBreakdown: CostBreakdownTotal!
+    monthlyTrend: [MonthlyTrend!]!
+    workItemsDistribution: [WorkItemDistribution!]!
+    activityStatusDistribution: [ActivityStatusDistribution!]!
+  }
+
+  # Chart Types
+  type SPKPerformance {
+    spkId: ID!
+    spkNo: String!
+    title: String!
+    projectName: String!
+    budget: Float!
+    workItemsAmount: Float!
+    workItemsCount: Int!
+    date: String!
+  }
+
+  type CostBreakdownTotal {
+    material: Float!
+    manpower: Float!
+    equipment: Float!
+    other: Float!
+    total: Float!
+  }
+
+  type MonthlyTrend {
+    year: Int!
+    month: Int!
+    monthName: String!
+    totalSales: Float!
+    spkCount: Int!
+  }
+
+  type WorkItemDistribution {
+    categoryName: String!
+    count: Int!
+  }
+
+  type ActivityStatusDistribution {
+    status: String!
+    count: Int!
   }
 `;
 

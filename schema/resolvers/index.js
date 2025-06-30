@@ -16,6 +16,7 @@ const unitResolvers = require('./unitResolvers');
 const approverSettingResolvers = require('./approverSettingResolvers');
 const backupResolvers = require('./backupResolvers');
 const equipmentRepairReportResolvers = require('./equipmentRepairReportResolvers');
+const dashboardResolvers = require('./dashboardResolvers');
 const { GraphQLScalarType } = require('graphql');
 const { Kind } = require('graphql/language');
 
@@ -70,7 +71,8 @@ const resolvers = {
         ...unitResolvers.Query,
         ...approverSettingResolvers.Query,
         ...backupResolvers.Query,
-        ...equipmentRepairReportResolvers.Query
+        ...equipmentRepairReportResolvers.Query,
+        ...dashboardResolvers.Query
     },
     Mutation: {
         ...userResolvers.Mutation,
