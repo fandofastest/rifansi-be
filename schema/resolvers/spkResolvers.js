@@ -197,15 +197,18 @@ const Query = {
         const subCategories = await SubCategory.find()
             .populate('categoryId');
 
-        return subCategories.map(subCategory => ({
-            ...subCategory.toObject(),
-            id: subCategory._id,
-            categoryId: subCategory.categoryId?._id,
-            category: subCategory.categoryId ? {
-                id: subCategory.categoryId._id,
-                name: subCategory.categoryId.name
-            } : null
-        }));
+        // Filter subCategory yang categoryId-nya null
+        return subCategories
+            .filter(subCategory => subCategory.categoryId)
+            .map(subCategory => ({
+                ...subCategory.toObject(),
+                id: subCategory._id,
+                categoryId: subCategory.categoryId?._id,
+                category: subCategory.categoryId ? {
+                    id: subCategory.categoryId._id,
+                    name: subCategory.categoryId.name
+                } : null
+            }));
     },
 
     subCategoriesByCategory: async (_, { categoryId }, { user }) => {
