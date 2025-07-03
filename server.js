@@ -20,7 +20,7 @@ const { typeDefs, resolvers } = require('./schema');
 const app = express();
 
 // Middleware
-const corsOrigins = process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:5173'];
+const corsOrigins = process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : ['http://localhost:3000', 'http://localhost:3001', 'http://158.180.81.43:3001'];
 app.use(cors({
   origin: corsOrigins,
   credentials: true
