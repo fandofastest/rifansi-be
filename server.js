@@ -31,7 +31,7 @@ app.use(express.urlencoded({ extended: true }));
 // Import router
 const importRouter = require('./routes/import');
 app.use('/download', downloadRouter);
-app.use('/api', importRouter);
+app.use('/upload', importRouter);
 
 // Initialize Default PersonnelRoles
 const initializeDefaultRoles = async () => {
