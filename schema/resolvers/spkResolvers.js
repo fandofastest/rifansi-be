@@ -1112,30 +1112,48 @@ const Mutation = {
         if (!spk) throw new Error('SPK not found');
 
         const workItemIndex = spk.workItems.findIndex(
-            item => item.workItemId.toString() === workItemId
+            item => item.workItemId && item.workItemId.toString() === workItemId
         );
 
         if (workItemIndex === -1) {
             throw new Error('WorkItem not found in this SPK');
         }
 
-        const updateData = { ...input };
-
+        // Simpan referensi ke objek yang akan diupdate
+        const currentItem = spk.workItems[workItemIndex];
+        
+        // Simpan workItemId asli
+        const originalWorkItemId = currentItem.workItemId;
+        
+        // Update field individual saja, bukan seluruh objek
+        if (input.boqVolume) currentItem.boqVolume = input.boqVolume;
+        if (input.rates) currentItem.rates = input.rates;
+        if (input.description !== undefined) currentItem.description = input.description;
+        
+        // Hitung ulang amount jika perlu
         if (input.boqVolume || input.rates) {
-            const currentItem = spk.workItems[workItemIndex];
-            const boqVolume = input.boqVolume || currentItem.boqVolume;
-            const rates = input.rates || currentItem.rates;
-
-            updateData.amount = (boqVolume.nr * rates.nr.rate) +
-                (boqVolume.r * rates.r.rate);
+            const boqVolume = currentItem.boqVolume;
+            const rates = currentItem.rates;
+            
+            if (boqVolume && rates && rates.nr && rates.r) {
+                currentItem.amount = (boqVolume.nr * rates.nr.rate) +
+                    (boqVolume.r * rates.r.rate);
+            }
         }
+        
+        // Pastikan workItemId tidak hilang
+        currentItem.workItemId = originalWorkItemId;
+        
+        // Debug
+        console.log('Updating SPK workItem:', {
+            spkId,
+            workItemIndex,
+            workItemId: currentItem.workItemId,
+            hasWorkItemId: !!currentItem.workItemId
+        });
 
-        spk.workItems[workItemIndex] = {
-            ...spk.workItems[workItemIndex],
-            ...updateData
-        };
-
-        return spk.save();
+        await spk.save();
+        return spk;
     }
 };
 
