@@ -438,12 +438,12 @@ const Query = {
                     } : null,
                     rates: {
                         nr: {
-                            rate: workItemData.rates?.nr?.rate ?? 0,
-                            description: workItemData.rates?.nr?.description ?? 'Non-remote rate'
+                            rate: spkWorkItem.rates?.nr?.rate ?? 0,
+                            description: spkWorkItem.rates?.nr?.description ?? 'Non-remote rate'
                         },
                         r: {
-                            rate: workItemData.rates?.r?.rate ?? 0,
-                            description: workItemData.rates?.r?.description ?? 'Remote rate'
+                            rate: spkWorkItem.rates?.r?.rate ?? 0,
+                            description: spkWorkItem.rates?.r?.description ?? 'Remote rate'
                         }
                     },
                     boqVolume,
@@ -528,15 +528,18 @@ const Query = {
                             name: workItemData.unitId.name || '',
                             code: workItemData.unitId.code || ''
                         } : null,
-                        rates: {
+                        rates: spkWorkItem ? {
                             nr: {
-                                rate: workItemData.rates?.nr?.rate ?? 0,
-                                description: workItemData.rates?.nr?.description ?? 'Non-remote rate'
+                                rate: spkWorkItem.rates?.nr?.rate ?? 0,
+                                description: spkWorkItem.rates?.nr?.description ?? 'Non-remote rate'
                             },
                             r: {
-                                rate: workItemData.rates?.r?.rate ?? 0,
-                                description: workItemData.rates?.r?.description ?? 'Remote rate'
+                                rate: spkWorkItem.rates?.r?.rate ?? 0,
+                                description: spkWorkItem.rates?.r?.description ?? 'Remote rate'
                             }
+                        } : {
+                            nr: { rate: 0, description: 'Non-remote rate' },
+                            r: { rate: 0, description: 'Remote rate' }
                         },
                         boqVolume,
                         actualQuantity: detail.actualQuantity || { nr: 0, r: 0 },
@@ -550,8 +553,8 @@ const Query = {
                             r: boqVolume.r > 0 ? ((detail.actualQuantity?.r || 0) / boqVolume.r) * 100 : 0
                         },
                         dailyCost: {
-                            nr: (boqVolume.nr / totalHariKerja) * (workItemData.rates?.nr?.rate ?? 0),
-                            r: (boqVolume.r / totalHariKerja) * (workItemData.rates?.r?.rate ?? 0)
+                            nr: (boqVolume.nr / totalHariKerja) * (spkWorkItem?.rates?.nr?.rate ?? 0),
+                            r: (boqVolume.r / totalHariKerja) * (spkWorkItem?.rates?.r?.rate ?? 0)
                         }
                     };
                 }).filter(Boolean);
