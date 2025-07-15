@@ -430,12 +430,19 @@ const Query = {
                         activityDetails: activityDetails.map(detail => {
                             if (!detail || !detail.workItemId) return null;
                             try {
+                                // Definisi default rates jika tidak ada di ActivityDetail atau SPK
+                                const defaultRates = {
+                                    nr: { rate: 0, description: 'Non-remote rate' },
+                                    r: { rate: 0, description: 'Remote rate' }
+                                };
+                                
                                 return {
                                     ...detail.toObject(),
                                     workItem: detail.workItemId ? {
                                         ...detail.workItemId.toObject(),
                                         unit: detail.workItemId.unitId,
-                                        rates: detail.workItemId.rates
+                                        // Gunakan rates dari ActivityDetail jika ada, jika tidak, gunakan default rates
+                                        rates: detail.rates || defaultRates
                                     } : null
                                 };
                             } catch (error) {
@@ -689,22 +696,7 @@ const Query = {
                 rejectionReason: dailyActivity.rejectionReason,
                 progressPercentage,
                 budgetUsage,
-                activityDetails: activityDetails.map(detail => {
-                    if (!detail || !detail.workItemId) return null;
-                    try {
-                        return {
-                            ...detail.toObject(),
-                            workItem: detail.workItemId ? {
-                                ...detail.workItemId.toObject(),
-                                unit: detail.workItemId.unitId,
-                                rates: detail.workItemId.rates
-                            } : null
-                        };
-                    } catch (error) {
-                        console.error('Error processing activity detail:', error);
-                        return null;
-                    }
-                }).filter(Boolean),
+                activityDetails: activityDetails,   
                 equipmentLogs: equipmentLogs.map(log => {
                     if (!log) return null;
                     try {
@@ -844,8 +836,32 @@ const Mutation = {
                     );
 
                     let itemProgressPercentage = 0;
+                    let boqVolume = { nr: 0, r: 0 };
+                    let rates = {
+                        nr: { rate: 0, description: 'Non-remote rate' },
+                        r: { rate: 0, description: 'Remote rate' }
+                    };
+                    
                     if (workItem) {
-                        const totalBoqVolume = workItem.boqVolume.nr + workItem.boqVolume.r;
+                        // Simpan BOQ volume dari SPK
+                        boqVolume = {
+                            nr: workItem.boqVolume?.nr || 0,
+                            r: workItem.boqVolume?.r || 0
+                        };
+                        
+                        // Simpan rates dari SPK
+                        rates = {
+                            nr: {
+                                rate: workItem.rates?.nr?.rate || 0,
+                                description: workItem.rates?.nr?.description || 'Non-remote rate'
+                            },
+                            r: {
+                                rate: workItem.rates?.r?.rate || 0,
+                                description: workItem.rates?.r?.description || 'Remote rate'
+                            }
+                        };
+                        
+                        const totalBoqVolume = boqVolume.nr + boqVolume.r;
                         const actualVolume = detail.actualQuantity.nr + detail.actualQuantity.r;
                         itemProgressPercentage = (totalBoqVolume > 0) ? (actualVolume / totalBoqVolume) * 100 : 0;
                     }
@@ -853,6 +869,9 @@ const Mutation = {
                     const activityDetail = new ActivityDetail({
                         dailyActivityId: dailyActivity._id,
                         workItemId: detail.workItemId,
+                        // Simpan BOQ dan rates dari SPK untuk mencegah ketidakkonsistenan data
+                        boqVolume,
+                        rates,
                         actualQuantity: {
                             nr: detail.actualQuantity.nr || 0,
                             r: detail.actualQuantity.r || 0
@@ -1165,6 +1184,28 @@ const ActivityDetailResolvers = {
     },
     workItem: async (parent) => {
         return WorkItem.findById(parent.workItemId);
+    },
+    // Explicitly return the stored rates from ActivityDetail
+    rates: (parent) => {
+        // If parent has rates stored, return those first
+        if (parent.rates && (parent.rates.nr || parent.rates.r)) {
+            return parent.rates;
+        }
+        
+        // Fallback to default empty rates if not available
+        return {
+            nr: { rate: 0, description: 'Default non-remote rate' },
+            r: { rate: 0, description: 'Default remote rate' }
+        };
+    },
+    // Explicitly return the stored boqVolume from ActivityDetail
+    boqVolume: (parent) => {
+        if (parent.boqVolume && (parent.boqVolume.nr !== undefined || parent.boqVolume.r !== undefined)) {
+            return parent.boqVolume;
+        }
+        
+        // Fallback to default empty boqVolume if not available
+        return { nr: 0, r: 0 };
     }
 };
 

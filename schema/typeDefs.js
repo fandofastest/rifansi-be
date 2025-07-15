@@ -293,6 +293,10 @@ const typeDefs = gql`
     id: ID!
     dailyActivityId: ID!
     workItemId: ID!
+    # Data historis dari SPK saat pembuatan
+    boqVolume: WorkItemVolume
+    rates: WorkItemRates
+    # Data eksekusi
     actualQuantity: WorkItemVolume!
     remarks: String
     status: String!

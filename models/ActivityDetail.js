@@ -3,6 +3,21 @@ const mongoose = require('mongoose');
 const activityDetailSchema = new mongoose.Schema({
   dailyActivityId: { type: mongoose.Schema.Types.ObjectId, ref: 'DailyActivity', required: true },
   workItemId: { type: mongoose.Schema.Types.ObjectId, ref: 'WorkItem', required: true },
+  // Data yang diambil dari SPK pada saat pembuatan
+  boqVolume: {
+    nr: { type: Number, min: 0, default: 0 },
+    r: { type: Number, min: 0, default: 0 }
+  },
+  rates: {
+    nr: {
+      rate: { type: Number, min: 0, default: 0 },
+      description: { type: String, default: 'Non-remote rate' }
+    },
+    r: {
+      rate: { type: Number, min: 0, default: 0 },
+      description: { type: String, default: 'Remote rate' }
+    }
+  },
   // Execution phase
   actualQuantity: {
     nr: { type: Number, required: true, min: 0, default: 0 },
@@ -47,15 +62,12 @@ const activityDetailSchema = new mongoose.Schema({
   toObject: { virtuals: true }
 });
 
-// Virtual field untuk total price
-activityDetailSchema.virtual('totalPrice').get(async function () {
+// Virtual field untuk total price - menggunakan rates yang tersimpan
+activityDetailSchema.virtual('totalPrice').get(function () {
   try {
-    const WorkItem = mongoose.model('WorkItem');
-    const workItem = await WorkItem.findById(this.workItemId);
-    if (!workItem || !workItem.rates) return 0;
-
-    const nrTotal = (this.actualQuantity.nr || 0) * (workItem.rates.nr?.rate || 0);
-    const rTotal = (this.actualQuantity.r || 0) * (workItem.rates.r?.rate || 0);
+    // Gunakan rates yang tersimpan dalam dokumen ActivityDetail
+    const nrTotal = (this.actualQuantity.nr || 0) * (this.rates?.nr?.rate || 0);
+    const rTotal = (this.actualQuantity.r || 0) * (this.rates?.r?.rate || 0);
     return nrTotal + rTotal;
   } catch (error) {
     console.error('Error calculating totalPrice:', error);
