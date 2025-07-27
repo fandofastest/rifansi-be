@@ -422,7 +422,18 @@ const dashboardResolvers = {
           totalRepairReports,
           monthlySales,
           monthlyCapaian,
-          
+          spkLocations: spks.map(spk => ({
+            spkId: spk._id,
+            name: spk.title || spk.spkNo,
+            latitude: spk.location && spk.location.coordinates ? spk.location.coordinates[1] : null,
+            longitude: spk.location && spk.location.coordinates ? spk.location.coordinates[0] : null
+          })),
+          borrowPitLocations: [], // Dummy data for now
+          contractProgressPercent: 0,
+          planVsActual: {
+            plan: 0,
+            actual: 0
+          },
           // Chart data
           spkPerformance,
           costBreakdown,

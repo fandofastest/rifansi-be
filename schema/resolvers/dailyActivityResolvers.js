@@ -747,6 +747,79 @@ const Mutation = {
         return DailyActivity.findByIdAndUpdate(id, args, { new: true });
     },
 
+    updateDailyActivityAfterSubmit: async (_, { id, input }, { user }) => {
+        if (!user) throw new Error('Not authenticated');
+
+        try {
+            const dailyActivity = await DailyActivity.findById(id);
+            if (!dailyActivity) {
+                throw new Error('DailyActivity tidak ditemukan');
+            }
+
+            // Verifikasi bahwa user yang update adalah creator atau memiliki permission
+            if (dailyActivity.createdBy.toString() !== user.userId) {
+                // Periksa apakah user memiliki permission khusus untuk edit (admin/superadmin)
+                const currentUser = await User.findById(user.userId).populate('role');
+                if (!currentUser || !['ADMIN', 'SUPERADMIN'].includes(currentUser.role?.roleCode)) {
+                    throw new Error('Tidak memiliki izin untuk mengubah laporan');
+                }
+            }
+
+            // Status sebelum update dan apakah sebelumnya sudah approved
+            const prevStatus = dailyActivity.status;
+            const wasApproved = dailyActivity.isApproved;
+
+            // Update fields dari input
+            Object.keys(input).forEach(key => {
+                if (key !== 'id' && dailyActivity[key] !== undefined) {
+                    dailyActivity[key] = input[key];
+                }
+            });
+
+            // Jika dokumen sudah diapprove sebelumnya, tandai perlu direview dengan status Submitted
+            if (wasApproved) {
+                dailyActivity.status = 'Submitted';
+                dailyActivity.isApproved = false;      // Reset status approval
+                dailyActivity.approvedBy = null;       // Reset approver
+                dailyActivity.approvedAt = null;       // Reset approve timestamp
+                
+                // Tambahkan ke approval history
+                if (!dailyActivity.approvalHistory) {
+                    dailyActivity.approvalHistory = [];
+                }
+                
+                dailyActivity.approvalHistory.push({
+                    status: 'Submitted',
+                    remarks: 'Dokumen telah diubah setelah disetujui dan memerlukan review kembali',
+                    updatedBy: user.userId,
+                    updatedAt: new Date()
+                });
+            }
+
+            dailyActivity.lastUpdatedBy = user.userId;
+            dailyActivity.lastUpdatedAt = new Date();
+
+            await dailyActivity.save();
+
+            // Populate required relations
+            const populatedActivity = await DailyActivity.findById(dailyActivity._id)
+                .populate('spkId')
+                .populate('createdBy')
+                .populate('approvedBy')
+                .populate('lastUpdatedBy')
+                .populate('areaId')
+                .populate({
+                    path: 'approvalHistory.updatedBy',
+                    model: 'User'
+                });
+
+            return populatedActivity;
+        } catch (error) {
+            console.error('Error in updateDailyActivityAfterSubmit:', error);
+            throw new Error(error.message || 'Terjadi kesalahan saat mengupdate laporan');
+        }
+    },
+
     deleteDailyActivity: async (_, { id }, { user }) => {
         if (!user) throw new Error('Not authenticated');
         await DailyActivity.findByIdAndDelete(id);

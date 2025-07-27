@@ -169,6 +169,7 @@ const typeDefs = gql`
     endDate: String
     budget: Float!
     workItems: [SPKWorkItem!]
+    totalWorkItems: Int!
     createdAt: String!
     updatedAt: String!
   }
@@ -643,6 +644,12 @@ const typeDefs = gql`
       username: String!
       password: String!
     ): AuthPayload!
+    
+    # Update DailyActivity after submit/approve
+    updateDailyActivityAfterSubmit(
+      id: ID!
+      input: UpdateDailyActivityInput!
+    ): DailyActivity!
 
     # User
     updateUser(
@@ -1273,7 +1280,7 @@ const typeDefs = gql`
     manpower: Float!
     material: Float!
     other: Float!
-    total: Float!
+    total: Float
   }
 
   type WorkItemProgress {
@@ -1378,7 +1385,7 @@ const typeDefs = gql`
     overallProgress: Float!
     financialProgress: Float!
     costs: Costs!
-    dailyActivities: [DailyActivityWithDetails!]
+    dailyActivities: [DailyActivityWithDetails!]!
     createdAt: String!
     updatedAt: String!
   }
@@ -1402,6 +1409,7 @@ const typeDefs = gql`
     otherCosts: [OtherCost!]!
     spkDetail: SPK
     userDetail: User
+    totalWorkItems: Int!
     createdAt: String!
     updatedAt: String!
   }
@@ -1654,6 +1662,7 @@ const typeDefs = gql`
     manpower: Float!
     equipment: Float!
     other: Float!
+    total: Float
   }
 
   type DailyActivityCost {
@@ -1812,6 +1821,7 @@ const typeDefs = gql`
     createdBy: String
     closingRemarks: String
     workItems: [WorkItemWithProgress!]!
+    totalWorkItems: Int!
     costs: DailyActivityCosts!
   }
 
@@ -1979,6 +1989,18 @@ const typeDefs = gql`
     repairImages: [String!]
   }
 
+  # Input type untuk update DailyActivity setelah disubmit/diapprove
+  input UpdateDailyActivityInput {
+    date: String
+    location: String
+    weather: String
+    workStartTime: String
+    workEndTime: String
+    startImages: [String!]
+    finishImages: [String!]
+    closingRemarks: String
+  }
+
   type MonthlySales {
     year: Int!
     month: Int!
@@ -2021,6 +2043,10 @@ const typeDefs = gql`
     monthlyTrend: [MonthlyTrend!]!
     workItemsDistribution: [WorkItemDistribution!]!
     activityStatusDistribution: [ActivityStatusDistribution!]!
+    contractProgressPercent: Float!
+    planVsActual: PlanVsActual!
+    spkLocations: [SPKLocation!]!
+    borrowPitLocations: [BorrowPitLocation!]!
   }
 
   # Chart Types
@@ -2040,7 +2066,7 @@ const typeDefs = gql`
     manpower: Float!
     equipment: Float!
     other: Float!
-    total: Float!
+    total: Float
   }
 
   type MonthlyTrend {
@@ -2059,6 +2085,25 @@ const typeDefs = gql`
   type ActivityStatusDistribution {
     status: String!
     count: Int!
+  }
+
+  # Supporting types for new dashboard fields
+  type PlanVsActual {
+    plan: Float!
+    actual: Float!
+  }
+
+  type SPKLocation {
+    spkId: ID!
+    name: String!
+    latitude: Float
+    longitude: Float
+  }
+
+  type BorrowPitLocation {
+    name: String!
+    latitude: Float
+    longitude: Float
   }
 `;
 

@@ -93,7 +93,8 @@ const Query = {
                         id: item.workItemId.unitId._id
                     } : null
                 } : null
-            })) || []
+            })) || [],
+            totalWorkItems: spk.workItems?.length || 0
         }));
     },
 
@@ -158,7 +159,8 @@ const Query = {
                         id: item.workItemId.unitId._id
                     } : null
                 } : null
-            })) || []
+            })) || [],
+            totalWorkItems: spk.workItems?.length || 0
         };
     },
 
@@ -466,6 +468,7 @@ const Query = {
                 createdBy: '',
                 closingRemarks: '',
                 workItems: defaultWorkItems,
+                totalWorkItems: defaultWorkItems.length,
                 costs: {
                     materials: { totalCost: 0, items: [] },
                     manpower: { totalCost: 0, items: [] },
@@ -490,7 +493,10 @@ const Query = {
                 const totalHariKerja = (start && end) ? Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1) : 1;
 
                 // Format work items
-                const workItems = activityDetails.map(detail => {
+                const workItemsMap = {};
+
+                // Build from existing activity details
+                activityDetails.forEach(detail => {
                     if (!detail || !detail.workItemId) return null;
                     const workItemData = detail.workItemId;
                     // Fungsi bantu untuk ambil ID
@@ -507,7 +513,7 @@ const Query = {
                         nr: spkWorkItem.boqVolume?.nr || 0,
                         r: spkWorkItem.boqVolume?.r || 0
                     } : { nr: 0, r: 0 };
-                    return {
+                    const obj = {
                         id: workItemData._id?.toString() || workItemData.toString(),
                         name: workItemData.name || '',
                         description: workItemData.description || '',
@@ -557,7 +563,66 @@ const Query = {
                             r: (boqVolume.r / totalHariKerja) * (spkWorkItem?.rates?.r?.rate ?? 0)
                         }
                     };
-                }).filter(Boolean);
+                    workItemsMap[obj.id] = obj;
+                });
+
+                // Add placeholder for work items with no activity yet
+                spk.workItems.forEach(swi => {
+                    const wid = (swi.workItemId._id || swi.workItemId).toString();
+                    if (workItemsMap[wid]) return;
+
+                    const wiData = swi.workItemId;
+                    if (!wiData) return;
+                    workItemsMap[wid] = {
+                        id: wid,
+                        name: wiData.name || '',
+                        description: wiData.description || '',
+                        categoryId: wiData.categoryId?._id?.toString() || wiData.categoryId?.toString() || null,
+                        subCategoryId: wiData.subCategoryId?._id?.toString() || wiData.subCategoryId?.toString() || null,
+                        unitId: wiData.unitId?._id?.toString() || wiData.unitId?.toString() || null,
+                        category: wiData.categoryId ? {
+                            id: wiData.categoryId._id?.toString() || wiData.categoryId.toString(),
+                            name: wiData.categoryId.name || '',
+                            code: wiData.categoryId.code || ''
+                        } : null,
+                        subCategory: wiData.subCategoryId ? {
+                            id: wiData.subCategoryId._id?.toString() || wiData.subCategoryId.toString(),
+                            name: wiData.subCategoryId.name || ''
+                        } : null,
+                        unit: wiData.unitId ? {
+                            id: wiData.unitId._id?.toString() || wiData.unitId.toString(),
+                            name: wiData.unitId.name || '',
+                            code: wiData.unitId.code || ''
+                        } : null,
+                        rates: {
+                            nr: {
+                                rate: swi.rates?.nr?.rate ?? 0,
+                                description: swi.rates?.nr?.description ?? 'Non-remote rate'
+                            },
+                            r: {
+                                rate: swi.rates?.r?.rate ?? 0,
+                                description: swi.rates?.r?.description ?? 'Remote rate'
+                            }
+                        },
+                        boqVolume: {
+                            nr: swi.boqVolume?.nr || 0,
+                            r: swi.boqVolume?.r || 0
+                        },
+                        actualQuantity: { nr: 0, r: 0 },
+                        lastUpdatedAt: null,
+                        dailyProgress: {
+                            nr: (swi.boqVolume?.nr || 0) / totalHariKerja,
+                            r: (swi.boqVolume?.r || 0) / totalHariKerja
+                        },
+                        progressAchieved: { nr: 0, r: 0 },
+                        dailyCost: {
+                            nr: ((swi.boqVolume?.nr || 0) / totalHariKerja) * (swi.rates?.nr?.rate ?? 0),
+                            r: ((swi.boqVolume?.r || 0) / totalHariKerja) * (swi.rates?.r?.rate ?? 0)
+                        }
+                    };
+                });
+
+                const workItems = Object.values(workItemsMap);
 
                 // Format costs
                 const costs = {
@@ -645,6 +710,7 @@ const Query = {
                     createdBy: da.createdBy ? da.createdBy.fullName : '',
                     closingRemarks: da.closingRemarks || '',
                     workItems,
+                    totalWorkItems: workItems.length,
                     costs
                 };
             }).filter(Boolean);
@@ -792,6 +858,17 @@ const Query = {
 
         // Group activity details by work item ID to calculate progress per work item
         const progressByWorkItem = {};
+
+        // Ensure every work item is represented even if it has no progress yet
+        spk.workItems.forEach(item => {
+            const wid = (item.workItemId._id || item.workItemId).toString();
+            if (!progressByWorkItem[wid]) {
+                progressByWorkItem[wid] = {
+                    totalNr: 0,
+                    totalR: 0
+                };
+            }
+        });
 
         activityDetails.forEach(detail => {
             if (!detail.workItemId) return;
