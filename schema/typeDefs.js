@@ -442,6 +442,16 @@ const typeDefs = gql`
     timestamp: String
   }
 
+  # BorrowPit
+  type BorrowPit {
+    id: ID!
+    name: String!
+    locationName: String
+    coordinates: [Float!]!
+    createdAt: String!
+    updatedAt: String!
+  }
+
   # Queries
   type Query {
     # User
@@ -624,7 +634,13 @@ const typeDefs = gql`
     myEquipmentRepairReports: [EquipmentRepairReport!]!
     pendingRepairReports: [EquipmentRepairReport!]!
 
-    dashboardSummary: DashboardSummary!
+    # BorrowPit
+    borrowPits: [BorrowPit!]!
+    borrowPit(id: ID!): BorrowPit
+    searchBorrowPits(name: String!): [BorrowPit!]!
+    borrowPitsNearPoint(longitude: Float!, latitude: Float!, maxDistance: Float): [BorrowPit!]!
+
+    dashboardSummary(timeRange: String, projectId: ID): DashboardSummary!
   }
 
   # Mutations
@@ -1129,6 +1145,11 @@ const typeDefs = gql`
     reviewEquipmentRepairReport(id: ID!, input: ReviewEquipmentRepairReportInput!): EquipmentRepairReport!
     updateRepairProgress(id: ID!, input: UpdateRepairProgressInput!): EquipmentRepairReport!
     deleteEquipmentRepairReport(id: ID!): Boolean!
+
+    # BorrowPit
+    createBorrowPit(input: BorrowPitInput!): BorrowPit!
+    updateBorrowPit(id: ID!, input: BorrowPitUpdateInput!): BorrowPit!
+    deleteBorrowPit(id: ID!): DeleteResponse!
   }
 
   # Input Types
@@ -1658,11 +1679,36 @@ const typeDefs = gql`
   }
 
   type CostBreakdown {
+    materials: MaterialCost!
     material: Float!
-    manpower: Float!
-    equipment: Float!
+    manpower: ManpowerCost!
+    equipment: EquipmentCost!
     other: Float!
     total: Float
+  }
+  
+  type MaterialCost {
+    total: Float!
+    items: [CostItem]
+    percentage: Float
+    amount: Float
+    count: Int
+  }
+  
+  type ManpowerCost {
+    total: Float!
+    items: [CostItem]
+    percentage: Float
+    amount: Float
+    count: Int
+  }
+  
+  type EquipmentCost {
+    total: Float!
+    items: [CostItem]
+    percentage: Float
+    amount: Float
+    count: Int
   }
 
   type DailyActivityCost {
@@ -1866,6 +1912,30 @@ const typeDefs = gql`
     r: Rate!
   }
 
+  # BorrowPit
+  type BorrowPit {
+    id: ID!
+    name: String!
+    locationName: String
+    coordinates: [Float!]!
+    createdAt: String!
+    updatedAt: String!
+  }
+
+  input BorrowPitInput {
+    name: String!
+    locationName: String
+    longitude: Float!
+    latitude: Float!
+  }
+
+  input BorrowPitUpdateInput {
+    name: String
+    locationName: String
+    longitude: Float
+    latitude: Float
+  }
+
   # Equipment Service Status
   enum EquipmentServiceStatus {
     ACTIVE
@@ -2035,30 +2105,134 @@ const typeDefs = gql`
     totalReports: Int!
     totalDailyActivities: Int!
     totalRepairReports: Int!
-    monthlySales: [MonthlySales!]!
-    monthlyCapaian: [MonthlyCapaian!]!
-    # Chart data
+    totalSales: Float
+    totalCosts: Float
+    monthlySales: [MonthlySalesDetail!]!
+    monthlyCosts: [MonthlyCostDetail!]!
+    borrowPitLocations: [BorrowPitLocation!]!
+    contractProgressPercent: Float!
     spkPerformance: [SPKPerformance!]!
+    progressByMonth: [MonthlyProgressDetail!]!
     costBreakdown: CostBreakdownTotal!
     monthlyTrend: [MonthlyTrend!]!
     workItemsDistribution: [WorkItemDistribution!]!
     activityStatusDistribution: [ActivityStatusDistribution!]!
-    contractProgressPercent: Float!
-    planVsActual: PlanVsActual!
-    spkLocations: [SPKLocation!]!
-    borrowPitLocations: [BorrowPitLocation!]!
+    equipmentPerformance: [EquipmentPerformance!]!
+  }
+
+  # GeoJSON Types
+  type Point {
+    type: String!
+    coordinates: [Float!]!
+  }
+
+  # Dashboard Types
+  type MonthlySalesDetail {
+    year: Int!
+    month: Int!
+    monthName: String!
+    totalSales: Float!
+    spkCount: Int!
+    amount: Float
+  }
+
+  type MonthlyCostDetail {
+    year: Int!
+    month: Int!
+    monthName: String!
+    totalCosts: Float!
+    count: Int!
+    amount: Float
+  }
+  
+  type MonthlyProgressDetail {
+    year: Int!
+    month: Int!
+    monthName: String!
+    progressPercentage: Float!
+    percentage: Float
+  }
+  
+  type EquipmentPerformance {
+    id: ID!
+    equipmentId: String
+    name: String!
+    utilizationRate: Float!
+    operationalHours: Float!
+    totalWorkingHours: Float
+    maintenanceCost: Float!
+    totalMaintenanceHours: Float
+    status: String!
+  }
+
+  type BorrowPitLocation {
+    id: ID!
+    name: String!
+    location: Point!
+  }
+
+  type MonthlyTrend {
+    year: Int!
+    month: Int!
+    monthName: String!
+    value: Float!
+    category: String!
+  }
+
+  type WorkItemDistribution {
+    name: String!
+    value: Float!
+  }
+
+  type ActivityStatusDistribution {
+    status: String!
+    count: Int!
+  }
+
+  type CostBreakdownTotal {
+    itemCost: Float!
+    workCost: Float!
+    equipmentCost: Float!
+    laborCost: Float!
+    mobilizationCost: Float!
+    demobilizationCost: Float!
+    totalCost: Float!
+    totalMaterialCost: Float!
+    totalManpowerCost: Float!
+    totalEquipmentCost: Float!
   }
 
   # Chart Types
+
+  type SPKTotalProgress {
+    percentage: Float!
+    totalCost: Float!
+    totalBudget: Float!
+    totalSpent: Float!
+    remainingBudget: Float!
+    budgetUtilizationPercentage: Float!
+    plannedVsActualCostRatio: Float!
+    totalPlannedCost: Float!
+    isOverBudget: Boolean!
+    costBreakdown: CostBreakdown!
+    costBreakdownTotal: CostBreakdownTotal!
+  }
+  
   type SPKPerformance {
     spkId: ID!
     spkNo: String!
     title: String!
-    projectName: String!
-    budget: Float!
+    projectName: String
+    budget: Float
     workItemsAmount: Float!
     workItemsCount: Int!
     date: String!
+    location: SPKLocation
+    workItems: [SPKWorkItemDetail!]!
+    completedAmount: Float!
+    progressPercentage: Float!
+    activityCount: Int!
+    totalProgress: SPKTotalProgress
   }
 
   type CostBreakdownTotal {
@@ -2094,17 +2268,31 @@ const typeDefs = gql`
   }
 
   type SPKLocation {
-    spkId: ID!
+    locationId: ID!
     name: String!
     latitude: Float
     longitude: Float
   }
 
   type BorrowPitLocation {
+    borrowPitId: ID!
     name: String!
+    locationName: String
     latitude: Float
     longitude: Float
   }
+
+  type SPKWorkItemDetail {
+    workItemId: ID!
+    name: String!
+    description: String
+    quantity: Float
+    unit: String
+    unitPrice: Float
+    amount: Float
+    category: String
+    subCategory: String
+  }
 `;
 
-module.exports = typeDefs; 
+module.exports = typeDefs;

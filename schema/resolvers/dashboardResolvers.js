@@ -7,10 +7,12 @@ const MaterialUsageLog = require('../../models/MaterialUsageLog');
 const ManpowerLog = require('../../models/ManpowerLog');
 const EquipmentLog = require('../../models/EquipmentLog');
 const OtherCost = require('../../models/OtherCost');
+const BorrowPit = require('../../models/BorrowPit');
 
 const dashboardResolvers = {
   Query: {
-    dashboardSummary: async () => {
+    dashboardSummary: async (_, { timeRange, projectId }) => {
+      // Abaikan parameter timeRange dan projectId, ambil semua data
       try {
         // Hitung total SPK (tidak ada field isActive)
         const totalSPK = await SPK.countDocuments({});
@@ -27,10 +29,34 @@ const dashboardResolvers = {
         const oneYearAgo = new Date();
         oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
         
-        // Get all SPKs for the last year
+        // Get all SPKs for the last year with full details
         const spks = await SPK.find({
           date: { $gte: oneYearAgo }
-        }).populate('workItems.workItemId');
+        })
+        .populate({
+          path: 'location',
+          select: 'id name coordinates'
+        })
+        .populate({
+          path: 'workItems.workItemId',
+          populate: [
+            {
+              path: 'categoryId',
+              select: 'id name'
+            },
+            {
+              path: 'subCategoryId',
+              select: 'id name'
+            },
+            {
+              path: 'unitId',
+              select: 'id name'
+            }
+          ]
+        });
+        
+        // Get all borrow pits
+        const borrowPits = await BorrowPit.find({});
         
         // Get all daily activities for the last year
         const dailyActivities = await DailyActivity.find({
@@ -260,16 +286,141 @@ const dashboardResolvers = {
           }
         ]);
 
-        // Chart data - SPK Performance (Top 10 SPK berdasarkan budget)
-        const topSPKs = await SPK.find({
-          date: { $gte: oneYearAgo }
-        })
-        .populate('workItems.workItemId')
-        .sort({ budget: -1 })
-        .limit(10);
+        // Get all daily activities for each SPK for progress calculation
+        const spkDailyActivities = {};
+        for (const da of dailyActivities) {
+          if (!da.spkId) continue;
+          const spkId = da.spkId.toString();
+          if (!spkDailyActivities[spkId]) {
+            spkDailyActivities[spkId] = [];
+          }
+          spkDailyActivities[spkId].push(da);
+        }
 
-        const spkPerformance = topSPKs.map(spk => {
+        // Calculate enhanced SPK Performance with details like spkDetailsWithProgress
+        const spkPerformance = spks.map(spk => {
           const totalWorkItemsAmount = spk.workItems.reduce((total, item) => total + (item.amount || 0), 0);
+          
+          // Calculate progress for each work item based on activity details
+          const spkId = spk._id.toString();
+          const spkActivities = spkDailyActivities[spkId] || [];
+          
+          // Calculate overall progress percentage
+          let completedAmount = 0;
+          const totalAmount = totalWorkItemsAmount;
+          
+          // Get detailed work items with progress
+          const workItems = [];
+          
+          // Pastikan setiap SPK memiliki setidaknya satu work item default jika tidak ada data
+          // untuk menghindari field workItems bernilai null
+          if (!spk.workItems || spk.workItems.length === 0) {
+            workItems.push({
+              workItemId: spk._id, // Gunakan SPK ID sebagai placeholder
+              name: 'Default Work Item',
+              description: '',
+              quantity: 0,
+              unit: '',
+              unitPrice: 0,
+              amount: 0,
+              category: '',
+              subCategory: ''
+            });
+          } else {
+            // Ekstrak detail workItems jika ada data
+            for (const item of spk.workItems) {
+              const workItem = item.workItemId;
+              if (!workItem) continue;
+              
+              workItems.push({
+                workItemId: workItem._id,
+                name: workItem.name || 'Unknown Work Item',
+                description: workItem.description || '',
+                quantity: item.boqVolume ? (item.boqVolume.nr + item.boqVolume.r) : 0,
+                unit: workItem.unitId && workItem.unitId.name ? workItem.unitId.name : '',
+                unitPrice: item.rates ? (item.rates.nr && item.rates.nr.rate ? item.rates.nr.rate : 0) : 0,
+                amount: item.amount || 0,
+                category: workItem.categoryId && workItem.categoryId.name ? workItem.categoryId.name : '',
+                subCategory: workItem.subCategoryId && workItem.subCategoryId.name ? workItem.subCategoryId.name : ''
+              });
+            }
+            
+            // Jika semua workItems gagal diproses, tambahkan item default
+            if (workItems.length === 0) {
+              workItems.push({
+                workItemId: spk._id,
+                name: 'Default Work Item',
+                description: '',
+                quantity: 0,
+                unit: '',
+                unitPrice: 0,
+                amount: 0,
+                category: '',
+                subCategory: ''
+              });
+            }
+          }
+          
+          // Calculate cost breakdown untuk SPK ini
+          const spkActivitiesIds = spkActivities.map(activity => activity._id.toString());
+          
+          // Filter material logs untuk SPK ini
+          const spkMaterialLogs = materialLogs.filter(log => 
+            log.dailyActivityId && spkActivitiesIds.includes(log.dailyActivityId.toString()));
+          
+          // Filter manpower logs untuk SPK ini
+          const spkManpowerLogs = manpowerLogs.filter(log => 
+            log.dailyActivityId && spkActivitiesIds.includes(log.dailyActivityId.toString()));
+          
+          // Filter equipment logs untuk SPK ini
+          const spkEquipmentLogs = equipmentLogs.filter(log => 
+            log.dailyActivityId && spkActivitiesIds.includes(log.dailyActivityId.toString()));
+
+          // Calculate cost breakdown
+          const spkMaterialCost = spkMaterialLogs.reduce((total, log) => 
+            total + ((log.quantity || 0) * (log.unitRate || log.materialId?.unitRate || 0)), 0);
+
+          const spkManpowerCost = spkManpowerLogs.reduce((total, log) => 
+            total + ((log.personCount || 0) * (log.workingHours || 0) * (log.hourlyRate || 0)), 0);
+
+          const spkEquipmentCost = spkEquipmentLogs.reduce((total, log) => {
+            const fuelCost = (log.fuelIn || 0) * (log.fuelPrice || 0);
+            const rentalCost = (log.workingHour || 0) * (log.hourlyRate || 0);
+            return total + fuelCost + rentalCost;
+          }, 0);
+
+          // Total actual cost
+          const spkTotalActualCost = spkMaterialCost + spkManpowerCost + spkEquipmentCost;
+
+          // Enhanced financial progress calculations
+          const spkBudget = spk.budget || 0;
+          const spkTotalPlannedCost = totalWorkItemsAmount || 0;
+          const spkRemainingBudget = spkBudget - spkTotalActualCost;
+
+          // Cost breakdown structure
+          const costBreakdown = {
+            materials: {
+              amount: spkMaterialCost,
+              percentage: spkTotalActualCost > 0 ? (spkMaterialCost / spkTotalActualCost) * 100 : 0,
+              count: spkMaterialLogs.length
+            },
+            manpower: {
+              amount: spkManpowerCost,
+              percentage: spkTotalActualCost > 0 ? (spkManpowerCost / spkTotalActualCost) * 100 : 0,
+              count: spkManpowerLogs.length
+            },
+            equipment: {
+              amount: spkEquipmentCost,
+              percentage: spkTotalActualCost > 0 ? (spkEquipmentCost / spkTotalActualCost) * 100 : 0,
+              count: spkEquipmentLogs.length
+            }
+          };
+          
+          // Calculate progress metrics
+          const workItemCompletionPercentage = totalAmount > 0 ? (completedAmount / totalAmount) * 100 : 0;
+          const budgetUtilizationPercentage = spkBudget > 0 ? (spkTotalActualCost / spkBudget) * 100 : 0;
+          const plannedVsActualCostRatio = spkTotalPlannedCost > 0 ? (spkTotalActualCost / spkTotalPlannedCost) * 100 : 0;
+          
           return {
             spkId: spk._id.toString(),
             spkNo: spk.spkNo,
@@ -278,7 +429,29 @@ const dashboardResolvers = {
             budget: spk.budget,
             workItemsAmount: totalWorkItemsAmount,
             workItemsCount: spk.workItems.length,
-            date: spk.date.toISOString()
+            date: spk.date.toISOString(),
+            location: spk.location ? {
+              locationId: spk.location._id,
+              name: spk.location.name,
+              latitude: spk.location.coordinates ? spk.location.coordinates.coordinates[1] : null,
+              longitude: spk.location.coordinates ? spk.location.coordinates.coordinates[0] : null
+            } : null,
+            workItems: workItems,
+            completedAmount: completedAmount,
+            progressPercentage: totalAmount > 0 ? (completedAmount / totalAmount) * 100 : 0,
+            activityCount: spkActivities.length,
+            // New fields for enhanced financial metrics
+            totalProgress: {
+              percentage: Math.round(workItemCompletionPercentage * 100) / 100,
+              totalBudget: spkBudget,
+              totalSpent: spkTotalActualCost,
+              remainingBudget: spkRemainingBudget,
+              budgetUtilizationPercentage: Math.round(budgetUtilizationPercentage * 100) / 100,
+              plannedVsActualCostRatio: Math.round(plannedVsActualCostRatio * 100) / 100,
+              totalPlannedCost: spkTotalPlannedCost,
+              isOverBudget: spkTotalActualCost > spkBudget,
+              costBreakdown: costBreakdown
+            }
           };
         });
 
@@ -302,7 +475,18 @@ const dashboardResolvers = {
           manpower: totalManpowerCost,
           equipment: totalEquipmentCost,
           other: totalOtherCost,
-          total: totalMaterialCost + totalManpowerCost + totalEquipmentCost + totalOtherCost
+          total: totalMaterialCost + totalManpowerCost + totalEquipmentCost + totalOtherCost,
+          // Required fields for CostBreakdownTotal type
+          itemCost: totalMaterialCost,
+          workCost: totalManpowerCost,
+          equipmentCost: totalEquipmentCost,
+          laborCost: totalManpowerCost,
+          mobilizationCost: totalOtherCost * 0.3, // Example allocation of other costs
+          demobilizationCost: totalOtherCost * 0.2, // Example allocation of other costs
+          totalCost: totalMaterialCost + totalManpowerCost + totalEquipmentCost + totalOtherCost,
+          totalMaterialCost: totalMaterialCost,
+          totalManpowerCost: totalManpowerCost,
+          totalEquipmentCost: totalEquipmentCost
         };
 
         // Chart data - Monthly Trend (Sales trend)
@@ -413,6 +597,78 @@ const dashboardResolvers = {
           }
         ]);
         
+        // Calculate total sales and costs from monthly data
+        const totalSales = Object.values(monthlyData).reduce((total, item) => total + item.sales, 0);
+        const totalCosts = Object.values(monthlyData).reduce((total, item) => total + item.cost, 0);
+        
+        // We'll use the costBreakdown object that's already defined below
+        
+        // Format monthly costs for schema
+        const monthlyCosts = Object.values(monthlyData).map(item => ({
+          year: item.year,
+          month: item.month,
+          monthName: getMonthName(item.month),
+          amount: item.cost,
+          totalCosts: item.cost,
+          count: item.spkCount || 0
+        }));
+        
+        // Format progress by month data
+        const progressByMonth = Object.values(monthlyData).map(item => {
+          // Calculate progress percentage (example calculation, adjust as needed)
+          const percentage = item.sales > 0 ? 
+            Math.min(100, (item.cost / item.sales * 100)) : 0;
+            
+          return {
+            year: item.year,
+            month: item.month,
+            monthName: getMonthName(item.month),
+            percentage: percentage,
+            progressPercentage: percentage
+          };
+        });
+        
+        // Create equipment performance data
+        const equipmentPerformance = [];
+        // This would normally be populated from equipment logs, for now add placeholder
+        if (equipmentLogs.length > 0) {
+          // Group equipment logs by equipment ID
+          const equipmentGroups = {};
+          equipmentLogs.forEach(log => {
+            if (!equipmentGroups[log.equipmentId]) {
+              equipmentGroups[log.equipmentId] = {
+                workingHours: 0,
+                maintenanceHours: 0,
+                logs: []
+              };
+            }
+            equipmentGroups[log.equipmentId].workingHours += (log.workingHours || 0);
+            equipmentGroups[log.equipmentId].logs.push(log);
+          });
+          
+          // Create performance data for each equipment
+          for (const [eqId, data] of Object.entries(equipmentGroups)) {
+            equipmentPerformance.push({
+              equipmentId: eqId,
+              id: eqId,
+              name: `Equipment ${eqId}`,
+              totalWorkingHours: data.workingHours,
+              totalMaintenanceHours: data.maintenanceHours || 0,
+              utilizationRate: data.workingHours > 0 ? 
+                (data.workingHours / (data.workingHours + data.maintenanceHours)) * 100 : 0
+            });
+          }
+        }
+        
+        // Helper function to get month name
+        function getMonthName(month) {
+          const monthNames = [
+            'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+            'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+          ];
+          return monthNames[month - 1] || 'Unknown';
+        }
+        
         return {
           // Summary data
           totalSPK,
@@ -420,26 +676,41 @@ const dashboardResolvers = {
           totalReports,
           totalDailyActivities,
           totalRepairReports,
+          totalSales,
+          totalCosts,
           monthlySales,
+          monthlyCosts,
+          progressByMonth,
           monthlyCapaian,
-          spkLocations: spks.map(spk => ({
-            spkId: spk._id,
-            name: spk.title || spk.spkNo,
-            latitude: spk.location && spk.location.coordinates ? spk.location.coordinates[1] : null,
-            longitude: spk.location && spk.location.coordinates ? spk.location.coordinates[0] : null
+          borrowPitLocations: borrowPits.map(pit => ({
+            borrowPitId: pit._id,
+            name: pit.name,
+            locationName: pit.locationName || pit.name,
+            latitude: pit.coordinates && pit.coordinates.coordinates ? pit.coordinates.coordinates[1] : null,
+            longitude: pit.coordinates && pit.coordinates.coordinates ? pit.coordinates.coordinates[0] : null
           })),
-          borrowPitLocations: [], // Dummy data for now
           contractProgressPercent: 0,
-          planVsActual: {
-            plan: 0,
-            actual: 0
-          },
           // Chart data
           spkPerformance,
-          costBreakdown,
+          // Make sure costBreakdown has all required fields for CostBreakdownTotal type
+          costBreakdown: {
+            ...costBreakdown,
+            // Add fields required by CostBreakdownTotal type if not already present
+            itemCost: costBreakdown.material || 0,
+            workCost: costBreakdown.manpower || 0,
+            equipmentCost: costBreakdown.equipment || 0,
+            laborCost: costBreakdown.manpower || 0,
+            mobilizationCost: costBreakdown.other ? costBreakdown.other * 0.3 : 0, // Example allocation
+            demobilizationCost: costBreakdown.other ? costBreakdown.other * 0.2 : 0, // Example allocation
+            totalCost: costBreakdown.total || 0,
+            totalMaterialCost: costBreakdown.material || 0,
+            totalManpowerCost: costBreakdown.manpower || 0,
+            totalEquipmentCost: costBreakdown.equipment || 0
+          },
           monthlyTrend,
           workItemsDistribution,
-          activityStatusDistribution
+          activityStatusDistribution,
+          equipmentPerformance
         };
       } catch (error) {
         throw new Error(`Error fetching dashboard summary: ${error.message}`);

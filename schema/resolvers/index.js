@@ -17,6 +17,7 @@ const approverSettingResolvers = require('./approverSettingResolvers');
 const backupResolvers = require('./backupResolvers');
 const equipmentRepairReportResolvers = require('./equipmentRepairReportResolvers');
 const dashboardResolvers = require('./dashboardResolvers');
+const borrowPitResolvers = require('./borrowPitResolvers');
 const { GraphQLScalarType } = require('graphql');
 const { Kind } = require('graphql/language');
 
@@ -72,7 +73,8 @@ const resolvers = {
         ...approverSettingResolvers.Query,
         ...backupResolvers.Query,
         ...equipmentRepairReportResolvers.Query,
-        ...dashboardResolvers.Query
+        ...dashboardResolvers.Query,
+        ...borrowPitResolvers.Query
     },
     Mutation: {
         ...userResolvers.Mutation,
@@ -92,7 +94,8 @@ const resolvers = {
         ...unitResolvers.Mutation,
         ...approverSettingResolvers.Mutation,
         ...backupResolvers.Mutation,
-        ...equipmentRepairReportResolvers.Mutation
+        ...equipmentRepairReportResolvers.Mutation,
+        ...borrowPitResolvers.Mutation
     },
     // Type Resolvers
     Category: categoryResolvers.Category,
@@ -119,7 +122,8 @@ const resolvers = {
     Holiday: holidayResolvers.Holiday,
     ApproverSetting: approverSettingResolvers.ApproverSetting,
     EquipmentRepairReport: equipmentRepairReportResolvers.EquipmentRepairReport,
-    RepairStatusHistory: equipmentRepairReportResolvers.RepairStatusHistory
+    RepairStatusHistory: equipmentRepairReportResolvers.RepairStatusHistory,
+    BorrowPit: borrowPitResolvers.BorrowPit
 };
 
 module.exports = resolvers; 

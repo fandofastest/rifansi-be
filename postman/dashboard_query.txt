@@ -1,46 +1,29 @@
-query DashboardSummary {
+query GetDashboardSummary {
   dashboardSummary {
-    # Summary data
-    totalSPK
-    totalWorkItems
-    totalReports
-    totalDailyActivities
-    totalRepairReports
-    
-    # Monthly Sales data
+    # Sales Data
+    totalSales
     monthlySales {
-      year
       month
-      monthName
-      sales
-      cost
-      costBreakdown {
-        material
-        manpower
-        equipment
-        other
-      }
-      profit
-      profitMargin
-      spkCount
+      year
+      amount
     }
     
-    # Monthly Capaian data
-    monthlyCapaian {
-      year
+    # Cost Data
+    totalCosts
+    monthlyCosts {
       month
-      monthName
-      totalSPKActive
-      totalBudget
-      spkProgress {
-        spkId
-        spkTitle
-        spkBudget
-        activityCount
-      }
+      year
+      amount
     }
     
-    # Chart data - SPK Performance (Top 10 SPK berdasarkan budget)
+    # Progress Data
+    progressByMonth {
+      month
+      year
+      percentage
+    }
+    
+    # SPK Performance with detailed data and costs
     spkPerformance {
       spkId
       spkNo
@@ -50,36 +33,78 @@ query DashboardSummary {
       workItemsAmount
       workItemsCount
       date
+      location {
+        locationId
+        name
+        latitude
+        longitude
+      }
+      workItems {
+        workItemId
+        name
+        description
+        quantity
+        unit
+        unitPrice
+        amount
+        category
+        subCategory
+      }
+      completedAmount
+      progressPercentage
+      activityCount
+      # New cost and budget fields
+      totalProgress {
+        percentage
+        totalBudget
+        totalSpent
+        remainingBudget
+        budgetUtilizationPercentage
+        plannedVsActualCostRatio
+        totalPlannedCost
+        isOverBudget
+        costBreakdown {
+          materials {
+            amount
+            percentage
+            count
+          }
+          manpower {
+            amount
+            percentage
+            count
+          }
+          equipment {
+            amount
+            percentage
+            count
+          }
+        }
+      }
     }
     
-    # Chart data - Cost Breakdown (Total cost per kategori)
+    # Cost Breakdown
     costBreakdown {
-      material
-      manpower
-      equipment
-      other
-      total
+      totalMaterialCost
+      totalManpowerCost
+      totalEquipmentCost
     }
     
-    # Chart data - Monthly Trend (Sales trend)
-    monthlyTrend {
-      year
-      month
-      monthName
-      totalSales
-      spkCount
+    # Equipment Performance
+    equipmentPerformance {
+      equipmentId
+      name
+      totalWorkingHours
+      totalMaintenanceHours
+      utilizationRate
     }
     
-    # Chart data - Work Items Distribution (per kategori)
-    workItemsDistribution {
-      categoryName
-      count
-    }
-    
-    # Chart data - Activity Status Distribution
-    activityStatusDistribution {
-      status
-      count
+    # Borrow Pit Locations
+    borrowPitLocations {
+      borrowPitId
+      locationName
+      latitude
+      longitude
     }
   }
 } 
