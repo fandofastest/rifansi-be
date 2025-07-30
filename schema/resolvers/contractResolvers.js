@@ -12,15 +12,15 @@ const Query = {
 };
 
 const Mutation = {
-    createContract: async (_, { contractNo, description, startDate, endDate, vendorName }, { user }) => {
+    createContract: async (_, { contractNo, description, startDate, endDate, vendorName, totalBudget }, { user }) => {
         if (!user) throw new Error('Not authenticated');
-        const contract = new Contract({ contractNo, description, startDate, endDate, vendorName });
+        const contract = new Contract({ contractNo, description, startDate, endDate, vendorName, totalBudget });
         return contract.save();
     },
 
-    updateContract: async (_, { id, contractNo, description, startDate, endDate, vendorName }, { user }) => {
+    updateContract: async (_, { id, contractNo, description, startDate, endDate, vendorName, totalBudget }, { user }) => {
         if (!user) throw new Error('Not authenticated');
-        const updateData = { contractNo, description, startDate, endDate, vendorName };
+        const updateData = { contractNo, description, startDate, endDate, vendorName, totalBudget };
         Object.keys(updateData).forEach(key => updateData[key] === undefined && delete updateData[key]);
         return await Contract.findByIdAndUpdate(id, updateData, { new: true });
     },

@@ -25,6 +25,10 @@ const contractSchema = new mongoose.Schema({
   updatedAt: { 
     type: Date, 
     default: Date.now 
+  },
+  totalBudget: {
+    type: Number,
+    default: 0
   }
 });
 

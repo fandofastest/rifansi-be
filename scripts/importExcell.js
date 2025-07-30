@@ -480,14 +480,26 @@ function detectExplicitBudgetWAP(sheetData) {
     if (hasTotal) {
       console.log(`🔍 Baris TOTAL ditemukan: [${row.join(' | ')}]`);
 
-      // Cari nilai numerik terbesar di baris ini (kolom Total Price)
-      const numeric = row.filter(cell =>
-        typeof cell === "number" && !isNaN(cell) && cell > 1000000
-      ).sort((a, b) => b - a)[0];
-
-      if (numeric) {
-        console.log(`💰 Total budget ditemukan: ${numeric.toLocaleString("id-ID")}`);
-        return numeric;
+      // Cari nilai budget di baris ini
+      // Cek setiap cell dan parse dengan parseNumberCorrectly
+      let maxBudget = 0;
+      
+      for (let j = 0; j < row.length; j++) {
+        const cell = row[j];
+        // Coba parse cell sebagai angka
+        if (cell !== undefined && cell !== null && cell !== "") {
+          const parsed = parseNumberCorrectly(cell);
+          // Asumsi budget minimal 1 juta
+          if (parsed > 1000000 && parsed > maxBudget) {
+            maxBudget = parsed;
+            console.log(`💰 Kandidat budget: ${parsed.toLocaleString("id-ID")} dari nilai: ${cell}`);
+          }
+        }
+      }
+      
+      if (maxBudget > 0) {
+        console.log(`💰 Total budget ditemukan: ${maxBudget.toLocaleString("id-ID")}`);
+        return maxBudget;
       }
     }
   }
@@ -526,20 +538,17 @@ function getWAPBudgetValue(sheetData) {
           console.log(`💰 BUDGET RAW VALUE (kolom ${c + 3}): "${budgetValue}"`);
           console.log(`💰 BUDGET TYPE: ${typeof budgetValue}`);
 
-          // Parse nilai budget
+          // Parse nilai budget menggunakan parseNumberCorrectly
           let parsedBudget = null;
           if (typeof budgetValue === 'number') {
             parsedBudget = budgetValue;
             console.log(`✅ BUDGET SUDAH BERUPA NUMBER: ${parsedBudget}`);
           } else if (typeof budgetValue === 'string') {
-            console.log(`🧹 CLEANING BUDGET STRING:`);
+            console.log(`🧹 PARSING BUDGET STRING:`);
             console.log(`   Original: "${budgetValue}"`);
 
-            // Remove any non-numeric characters
-            const cleanValue = budgetValue.replace(/[^\d]/g, '');
-            console.log(`   After cleaning: "${cleanValue}"`);
-
-            parsedBudget = parseFloat(cleanValue);
+            // Gunakan parseNumberCorrectly yang sudah diperbaiki
+            parsedBudget = parseNumberCorrectly(budgetValue);
             console.log(`   Parsed to number: ${parsedBudget}`);
           }
 
@@ -1502,11 +1511,11 @@ async function importCompleteWAPBOQ(filePath) {
 
         if (!unit) unit = "Unit";
 
-        // Ambil data numeric
-        const nonRemoteRate = parseFloat(row[2]) || 0;
-        const nonRemoteQty = parseFloat(row[3]) || 0;
-        const remoteRate = parseFloat(row[4]) || 0;
-        const remoteQty = parseFloat(row[5]) || 0;
+        // Ambil data numeric dengan fungsi parseNumberCorrectly untuk menangani format angka dengan benar
+        const nonRemoteRate = parseNumberCorrectly(row[2]);
+        const nonRemoteQty = parseNumberCorrectly(row[3]);
+        const remoteRate = parseNumberCorrectly(row[4]);
+        const remoteQty = parseNumberCorrectly(row[5]);
 
         console.log(`📄 WORK ITEM ${itemCount}: "${workItemName}" (${unit})`);
 
@@ -1733,7 +1742,8 @@ async function importCompleteWapBoqv2(filePath) {
       // Skip baris jika row[0] mengandung 'TOTAL' atau row[8] adalah angka (bukan kategori)
       const parseNum = v => {
         if (v == null) return NaN;
-        return parseFloat(String(v).replace(/[^ -9.-]/g, '').replace(/^[\s\u00A0]+|[\s\u00A0]+$/g, ''));
+        // Gunakan parseNumberCorrectly untuk konsistensi
+        return parseNumberCorrectly(v);
       };
       if (!Array.isArray(catRow) || !catRow[0] || String(catRow[0]).trim() === "" ||
         String(catRow[0]).toLowerCase().includes('total') ||
@@ -1784,9 +1794,10 @@ async function importCompleteWapBoqv2(filePath) {
         if (isWorkItem) {
           let workItemName = row[2]?.toString().trim() || "";
           let unit = row[3]?.toString().trim() || "Unit";
-          const nonRemoteRate = parseNum(row[4]);
-          const nonRemoteQty = parseNum(row[6]);
-          const totalPrice = parseNum(row[8]);
+          // Gunakan parseNumberCorrectly untuk parsing yang lebih akurat
+          const nonRemoteRate = parseNumberCorrectly(row[4]);
+          const nonRemoteQty = parseNumberCorrectly(row[6]);
+          const totalPrice = parseNumberCorrectly(row[8]);
           console.log(`    ITEM: ${workItemName} | Unit: ${unit} | NR Rate: ${nonRemoteRate} | NR Qty: ${nonRemoteQty} | Total: ${totalPrice}`);
           try {
             // Cari/buat kategori, subkategori, unit
@@ -1934,6 +1945,54 @@ async function importAuto(filePath) {
       console.error('❌ [AUTO] Kedua metode import gagal.');
       throw err2;
     }
+  }
+}
+
+// Fungsi untuk parsing angka dengan benar, menangani berbagai format internasional
+function parseNumberCorrectly(value) {
+  if (value === undefined || value === null) return 0;
+  
+  // Jika sudah number, langsung kembalikan
+  if (typeof value === 'number') {
+    return value;
+  }
+  
+  // Konversi ke string dan bersihkan spasi
+  let str = String(value).trim();
+  
+  // Jika string kosong, kembalikan 0
+  if (str === '') return 0;
+  
+  // Log untuk debugging
+  console.log(`💲 Parsing angka: ${str} (${typeof str})`);
+
+  try {
+    // Kasus 1: Format dengan koma sebagai pemisah ribuan (1,234,567.89)
+    if (str.indexOf(',') !== -1) {
+      // Hapus semua koma
+      const cleaned = str.replace(/,/g, '');
+      const result = parseFloat(cleaned);
+      console.log(`💲 Hasil parsing (koma ribuan): ${str} → ${cleaned} → ${result}`);
+      return result;
+    }
+    
+    // Kasus 2: Format Eropa dengan titik sebagai pemisah ribuan (1.234.567,89)
+    if (str.indexOf('.') !== -1 && str.indexOf(',') !== -1) {
+      // Hapus titik dan ubah koma menjadi titik
+      const cleaned = str.replace(/\./g, '').replace(',', '.');
+      const result = parseFloat(cleaned);
+      console.log(`💲 Hasil parsing (titik ribuan): ${str} → ${cleaned} → ${result}`);
+      return result;
+    }
+    
+    // Default parsing
+    const result = parseFloat(str);
+    console.log(`💲 Hasil parsing default: ${str} → ${result}`);
+    return isNaN(result) ? 0 : result;
+    
+  } catch (e) {
+    console.error(`❌ Error parsing: ${str}`);
+    return 0;
   }
 }
 

@@ -2,6 +2,7 @@ const SPK = require('../../models/SPK');
 const WorkItem = require('../../models/WorkItem');
 const DailyActivity = require('../../models/DailyActivity');
 const EquipmentRepairReport = require('../../models/EquipmentRepairReport');
+const Contract = require('../../models/Contract');
 const ActivityDetail = require('../../models/ActivityDetail');
 const MaterialUsageLog = require('../../models/MaterialUsageLog');
 const ManpowerLog = require('../../models/ManpowerLog');
@@ -16,6 +17,11 @@ const dashboardResolvers = {
       try {
         // Hitung total SPK (tidak ada field isActive)
         const totalSPK = await SPK.countDocuments({});
+        
+        // Hitung total dan budget SPK dengan status closed
+        const closedSPKs = await SPK.find({ status: 'closed' });
+        const totalClosedSPK = closedSPKs.length;
+        const totalClosedSPKBudget = closedSPKs.reduce((sum, spk) => sum + (spk.budget || 0), 0);
         
         // Hitung total WorkItems (tidak ada field isActive)
         const totalWorkItems = await WorkItem.countDocuments({});
@@ -35,7 +41,7 @@ const dashboardResolvers = {
         })
         .populate({
           path: 'location',
-          select: 'id name coordinates'
+          select: 'id name location'
         })
         .populate({
           path: 'workItems.workItemId',
@@ -433,8 +439,8 @@ const dashboardResolvers = {
             location: spk.location ? {
               locationId: spk.location._id,
               name: spk.location.name,
-              latitude: spk.location.coordinates ? spk.location.coordinates.coordinates[1] : null,
-              longitude: spk.location.coordinates ? spk.location.coordinates.coordinates[0] : null
+              latitude: spk.location.location && spk.location.location.coordinates ? spk.location.location.coordinates[1] : null,
+              longitude: spk.location.location && spk.location.location.coordinates ? spk.location.location.coordinates[0] : null
             } : null,
             workItems: workItems,
             completedAmount: completedAmount,
@@ -660,6 +666,66 @@ const dashboardResolvers = {
           }
         }
         
+        // Fungsi untuk menghitung persentase total budget SPK terhadap contract budget
+        async function calculateTotalSpkContractPercentage() {
+          try {
+            // Ambil semua kontrak
+            const contracts = await Contract.find({});
+            
+            // Hitung total budget kontrak
+            const totalContractBudget = contracts.reduce((sum, contract) => sum + (contract.totalBudget || 0), 0);
+            
+            // Ambil semua SPK beserta contractNo
+            const allSpks = await SPK.find({});
+            
+            // Hitung total budget SPK berdasarkan contractNo
+            const spkBudgetsByContract = {};
+            
+            allSpks.forEach(spk => {
+              const contractNo = spk.contractNo || (spk.contractor ? extractContractNo(spk.contractor) : null);
+              
+              if (contractNo) {
+                if (!spkBudgetsByContract[contractNo]) {
+                  spkBudgetsByContract[contractNo] = 0;
+                }
+                spkBudgetsByContract[contractNo] += (spk.budget || 0);
+              }
+            });
+            
+            // Hitung total budget SPK
+            const totalSpkBudget = Object.values(spkBudgetsByContract).reduce((sum, budget) => sum + budget, 0);
+            
+            // Hitung persentase
+            const percentage = totalContractBudget > 0 ? 
+              (totalSpkBudget / totalContractBudget) * 100 : 0;
+            
+            // Kembalikan objek sesuai dengan TotalSpkContract type
+            return {
+              percentage: parseFloat(percentage.toFixed(2)),
+              totalBudgetSpk: parseFloat(totalSpkBudget.toFixed(2)),
+              totalBudgetContract: parseFloat(totalContractBudget.toFixed(2))
+            };
+          } catch (error) {
+            console.error('Error calculating totalSpkContract:', error);
+            return {
+              percentage: 0,
+              totalBudgetSpk: 0,
+              totalBudgetContract: 0
+            };
+          }
+        }
+
+        // Helper function untuk ekstrak contractNo dari contractor string
+        function extractContractNo(contractor) {
+          if (contractor) {
+            const contractMatch = contractor.match(/^([A-Z0-9]+)\s*\[/);
+            if (contractMatch && contractMatch[1]) {
+              return contractMatch[1].trim();
+            }
+          }
+          return null;
+        }
+        
         // Helper function to get month name
         function getMonthName(month) {
           const monthNames = [
@@ -678,6 +744,10 @@ const dashboardResolvers = {
           totalRepairReports,
           totalSales,
           totalCosts,
+          totalspkclose: {
+            totalSpk: totalClosedSPK,
+            totalBudgetSpk: totalClosedSPKBudget
+          },
           monthlySales,
           monthlyCosts,
           progressByMonth,
@@ -690,6 +760,7 @@ const dashboardResolvers = {
             longitude: pit.coordinates && pit.coordinates.coordinates ? pit.coordinates.coordinates[0] : null
           })),
           contractProgressPercent: 0,
+          totalSpkContract: await calculateTotalSpkContractPercentage(),
           // Chart data
           spkPerformance,
           // Make sure costBreakdown has all required fields for CostBreakdownTotal type

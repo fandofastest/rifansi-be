@@ -10,7 +10,7 @@ const Equipment = require('../../models/Equipment');
 const ActivityDetail = require('../../models/ActivityDetail');
 
 const Query = {
-    spks: async (_, { startDate, endDate, locationId, keyword }, { user }) => {
+    spks: async (_, { startDate, endDate, locationId, keyword, status }, { user }) => {
         if (!user) throw new Error('Not authenticated');
 
         const query = {};
@@ -33,6 +33,13 @@ const Query = {
                 { contractor: { $regex: keyword, $options: 'i' } },
                 { workDescription: { $regex: keyword, $options: 'i' } }
             ];
+        }
+        
+        // Filter by status jika parameter status diberikan
+        // Jika tidak, maka tampilkan semua SPK (termasuk yang status-nya kosong atau null)
+        // SPK dengan status kosong akan diubah menjadi 'active' oleh middleware
+        if (status) {
+            query.status = status;
         }
 
         const spks = await SPK.find(query)
@@ -58,44 +65,94 @@ const Query = {
                 ]
             })
             .sort({ date: -1 });
+            
+        // Identifikasi SPK yang tidak memiliki status di database dan update mereka
+        for (const spk of spks) {
+            // Periksa dokumen asli sebelum middleware mengubahnya
+            // Untuk memastikan kita hanya update yang benar-benar null di database
+            const originalDoc = await SPK.findById(spk._id).lean();
+            
+            if (!originalDoc.status || originalDoc.status === '') {
+                console.log(`Updating SPK ${spk._id} status to 'active' - original status: ${originalDoc.status}`);
+                try {
+                    const updated = await SPK.findByIdAndUpdate(spk._id, 
+                        { $set: { status: 'active' } }, 
+                        { new: true }
+                    );
+                    console.log(`Successfully updated SPK ${spk._id}, new status: ${updated.status}`);
+                    // Pastikan status di objek yang akan dikembalikan sudah diperbarui
+                    spk.status = 'active';
+                } catch (error) {
+                    console.error(`Error updating SPK ${spk._id} status:`, error);
+                }
+            }
+        }
 
-        return spks.map(spk => ({
-            ...spk.toObject(),
-            id: spk._id,
-            workItems: spk.workItems?.map(item => ({
-                ...item,
-                workItemId: item.workItemId?._id || item.workItemId,
-                boqVolume: item.boqVolume || { nr: 0, r: 0 },
-                amount: item.amount || 0,
-                rates: {
-                    nr: {
-                        rate: item.rates?.nr?.rate ?? 0,
-                        description: item.rates?.nr?.description ?? 'Non-remote rate'
+        return spks.map(spk => {
+            // Logging dokumen sebelum diubah oleh toObject()
+            console.log(`[Resolver - spks] Dokumen SPK ${spk._id} sebelum toObject(), status: ${spk.status}`);
+            
+            // Buat object hasil dan pastikan status tidak kosong
+            // Lihat detail spk object sebelum toObject()
+            console.log(`[Resolver Detail] SPK ${spk._id} spk.__proto__:`, Object.getPrototypeOf(spk));
+            console.log(`[Resolver Detail] SPK ${spk._id} mongoose methods:`, typeof spk.toObject, typeof spk.save);
+            
+            // Pastikan kita mendapatkan status mentah yang disimpan di database
+            const spkRaw = spk._doc || spk;
+            console.log(`[Resolver Raw] SPK ${spk._id} status raw from _doc:`, spkRaw.status);
+            
+            // Buat object hasil dengan menyebutkan status secara eksplisit
+            const spkObj = spk.toObject();
+            console.log(`[Resolver Detail] SPK ${spk._id} after toObject() status:`, spkObj.status);
+            
+            const result = {
+                ...spkObj,
+                id: spk._id,
+                workItems: spk.workItems?.map(item => ({
+                    ...item,
+                    workItemId: item.workItemId?._id || item.workItemId,
+                    boqVolume: item.boqVolume || { nr: 0, r: 0 },
+                    amount: item.amount || 0,
+                    rates: {
+                        nr: {
+                            rate: item.rates?.nr?.rate ?? 0,
+                            description: item.rates?.nr?.description ?? 'Non-remote rate'
+                        },
+                        r: {
+                            rate: item.rates?.r?.rate ?? 0,
+                            description: item.rates?.r?.description ?? 'Remote rate'
+                        }
                     },
-                    r: {
-                        rate: item.rates?.r?.rate ?? 0,
-                        description: item.rates?.r?.description ?? 'Remote rate'
-                    }
-                },
-                workItem: item.workItemId ? {
-                    ...item.workItemId.toObject(),
-                    id: item.workItemId._id,
-                    category: item.workItemId.categoryId ? {
-                        ...item.workItemId.categoryId.toObject(),
-                        id: item.workItemId.categoryId._id
-                    } : null,
-                    subCategory: item.workItemId.subCategoryId ? {
-                        ...item.workItemId.subCategoryId.toObject(),
-                        id: item.workItemId.subCategoryId._id
-                    } : null,
-                    unit: item.workItemId.unitId ? {
-                        ...item.workItemId.unitId.toObject(),
-                        id: item.workItemId.unitId._id
+                    workItem: item.workItemId ? {
+                        ...item.workItemId.toObject(),
+                        id: item.workItemId._id,
+                        category: item.workItemId.categoryId ? {
+                            ...item.workItemId.categoryId.toObject(),
+                            id: item.workItemId.categoryId._id
+                        } : null,
+                        subCategory: item.workItemId.subCategoryId ? {
+                            ...item.workItemId.subCategoryId.toObject(),
+                            id: item.workItemId.subCategoryId._id
+                        } : null,
+                        unit: item.workItemId.unitId ? {
+                            ...item.workItemId.unitId.toObject(),
+                            id: item.workItemId.unitId._id
+                        } : null
                     } : null
-                } : null
-            })) || [],
-            totalWorkItems: spk.workItems?.length || 0
-        }));
+                })) || [],
+                totalWorkItems: spk.workItems?.length || 0
+            };
+            
+            // Pastikan status tidak kosong/null dalam hasil yang dikembalikan
+            if (!result.status) {
+                console.log(`[Resolver - spks] Fixing empty status in result for SPK ${spk._id}`);
+                result.status = 'active';
+            } else {
+                console.log(`[Resolver - spks] Result status for SPK ${spk._id}: ${result.status}`);
+            }
+            
+            return result;
+        });
     },
 
     spk: async (_, { id }, { user }) => {
@@ -124,9 +181,43 @@ const Query = {
             });
 
         if (!spk) return null;
+        
+        // Identifikasi SPK yang tidak memiliki status di database dan update mereka
+        // Periksa dokumen asli sebelum middleware mengubahnya
+        const originalDoc = await SPK.findById(id).lean();
+        
+        if (!originalDoc.status || originalDoc.status === '') {
+            console.log(`Updating single SPK ${spk._id} status to 'active' - original status: ${originalDoc.status}`);
+            try {
+                const updated = await SPK.findByIdAndUpdate(spk._id, 
+                    { $set: { status: 'active' } }, 
+                    { new: true }
+                );
+                console.log(`Successfully updated SPK ${spk._id}, new status: ${updated.status}`);
+                // Pastikan status di objek yang akan dikembalikan sudah diperbarui
+                spk.status = 'active';
+            } catch (error) {
+                console.error(`Error updating SPK ${spk._id} status:`, error);
+            }
+        }
 
-        return {
-            ...spk.toObject(),
+        console.log(`[Resolver - spk] Single SPK ${spk._id} sebelum toObject(), status: ${spk.status}`);
+        
+        // Lihat detail spk object sebelum toObject()
+        console.log(`[Single Resolver Detail] SPK ${spk._id} spk.__proto__:`, Object.getPrototypeOf(spk));
+        console.log(`[Single Resolver Detail] SPK ${spk._id} mongoose methods:`, typeof spk.toObject, typeof spk.save);
+            
+        // Pastikan kita mendapatkan status mentah yang disimpan di database
+        const spkRaw = spk._doc || spk;
+        console.log(`[Single Resolver Raw] SPK ${spk._id} status raw from _doc:`, spkRaw.status);
+        
+        // Buat object hasil dengan menyebutkan status secara eksplisit
+        const spkObj = spk.toObject();
+        console.log(`[Single Resolver Detail] SPK ${spk._id} after toObject() status:`, spkObj.status);
+        
+        // Buat object hasil
+        const result = {
+            ...spkObj,
             id: spk._id,
             workItems: spk.workItems?.map(item => ({
                 ...item,
@@ -162,6 +253,16 @@ const Query = {
             })) || [],
             totalWorkItems: spk.workItems?.length || 0
         };
+        
+        // Pastikan status tidak kosong/null dalam hasil yang dikembalikan
+        if (!result.status) {
+            console.log(`[Resolver - spk] Fixing empty status in result for SPK ${spk._id}`);
+            result.status = 'active';
+        } else {
+            console.log(`[Resolver - spk] Result status for SPK ${spk._id}: ${result.status}`);
+        }
+        
+        return result;
     },
 
     workItems: async (_, __, { user }) => {
@@ -1233,6 +1334,29 @@ const Mutation = {
         });
 
         await spk.save();
+        return spk;
+    },
+    
+    updateSpkStatus: async (_, { id, status }, { user }) => {
+        if (!user) throw new Error('Not authenticated');
+        
+        // Validasi status yang diberikan (pastikan sesuai dengan nilai enum yang diizinkan)
+        const validStatuses = ['draft', 'active', 'completed', 'cancelled', 'closed'];
+        if (!validStatuses.includes(status)) {
+            throw new Error(`Status tidak valid. Status harus salah satu dari: ${validStatuses.join(', ')}`);
+        }
+        
+        // Temukan SPK berdasarkan ID
+        const spk = await SPK.findById(id);
+        if (!spk) throw new Error('SPK tidak ditemukan');
+        
+        // Update status
+        spk.status = status;
+        
+        // Simpan perubahan
+        await spk.save();
+        
+        console.log(`Status SPK ${id} berhasil diubah ke '${status}'`);
         return spk;
     }
 };

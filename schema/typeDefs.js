@@ -26,6 +26,7 @@ const typeDefs = gql`
     startDate: String
     endDate: String
     vendorName: String
+    totalBudget: Float
     createdAt: String!
     updatedAt: String!
   }
@@ -158,6 +159,7 @@ const typeDefs = gql`
   type SPK {
     id: ID!
     spkNo: String!
+    contractNo: String
     wapNo: String!
     title: String!
     projectName: String!
@@ -168,6 +170,7 @@ const typeDefs = gql`
     startDate: String
     endDate: String
     budget: Float!
+    status: String!
     workItems: [SPKWorkItem!]
     totalWorkItems: Int!
     createdAt: String!
@@ -502,7 +505,7 @@ const typeDefs = gql`
     areasNearby(latitude: Float!, longitude: Float!, maxDistance: Float!): [Area!]!
 
     # SPK
-    spks(startDate: String, endDate: String, locationId: ID, keyword: String): [SPK!]!
+    spks(startDate: String, endDate: String, locationId: ID, keyword: String, status: String): [SPK!]!
     spk(id: ID!): SPK
 
     # WorkItem
@@ -687,6 +690,7 @@ const typeDefs = gql`
       startDate: String
       endDate: String
       vendorName: String
+      totalBudget: Float
     ): Contract!
 
     updateContract(
@@ -696,6 +700,7 @@ const typeDefs = gql`
       startDate: String
       endDate: String
       vendorName: String
+      totalBudget: Float
     ): Contract!
 
     deleteContract(id: ID!): Boolean!
@@ -822,6 +827,7 @@ const typeDefs = gql`
     addWorkItemToSPK(spkId: ID!, input: AddWorkItemInput!): SPK!
     removeWorkItemFromSPK(spkId: ID!, workItemId: ID!): SPK!
     updateSPKWorkItem(spkId: ID!, workItemId: ID!, input: UpdateSPKWorkItemInput!): SPK!
+    updateSpkStatus(id: ID!, status: String!): SPK!
 
     # WorkItem
     createWorkItem(input: CreateWorkItemInput!): WorkItem!
@@ -1205,6 +1211,7 @@ const typeDefs = gql`
     startDate: String
     endDate: String
     budget: Float
+    contractNo: String
   }
 
   input AddWorkItemInput {
@@ -2107,10 +2114,12 @@ const typeDefs = gql`
     totalRepairReports: Int!
     totalSales: Float
     totalCosts: Float
+    totalspkclose: TotalSpkClose!
     monthlySales: [MonthlySalesDetail!]!
     monthlyCosts: [MonthlyCostDetail!]!
     borrowPitLocations: [BorrowPitLocation!]!
     contractProgressPercent: Float!
+    totalSpkContract: TotalSpkContract!
     spkPerformance: [SPKPerformance!]!
     progressByMonth: [MonthlyProgressDetail!]!
     costBreakdown: CostBreakdownTotal!
@@ -2241,6 +2250,17 @@ const typeDefs = gql`
     equipment: Float!
     other: Float!
     total: Float
+  }
+  
+  type TotalSpkContract {
+    percentage: Float!
+    totalBudgetSpk: Float!
+    totalBudgetContract: Float!
+  }
+  
+  type TotalSpkClose {
+    totalSpk: Int!
+    totalBudgetSpk: Float!
   }
 
   type MonthlyTrend {
