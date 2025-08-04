@@ -875,6 +875,11 @@ const Mutation = {
         if (!user) throw new Error('Not authenticated');
 
         try {
+            // Validasi input.activityDetails untuk mencegah workItemId kosong
+            if (input.activityDetails && input.activityDetails.some(detail => !detail.workItemId || detail.workItemId === '')) {
+                throw new Error('All activity details must have a valid workItemId');
+            }
+            
             const spk = await SPK.findById(input.spkId);
             if (!spk) {
                 throw new Error(`SPK with ID ${input.spkId} not found`);
@@ -1131,12 +1136,28 @@ const Mutation = {
                     dailyActivityId: cost.dailyActivityId,
                     costType: cost.costType,
                     amount: cost.amount,
-                    description: cost.description,
                     receiptNumber: cost.receiptNumber,
                     remarks: cost.remarks
                 }))
             };
         } catch (error) {
+            console.error('Error in submitDailyReport:', error);
+            console.error('Error stack:', error.stack);
+            
+            // Log detail untuk validasi workItemId
+            if (input.activityDetails) {
+                console.log('ActivityDetails input:', JSON.stringify(input.activityDetails.map(d => ({
+                    workItemId: d.workItemId,
+                    type: typeof d.workItemId,
+                    isEmpty: !d.workItemId || d.workItemId === ''
+                }))));
+            }
+            
+            if (error.name === 'ValidationError' && error.errors && error.errors.workItemId) {
+                console.error('workItemId validation error:', error.errors.workItemId);
+                throw new Error(`Validation error: ${error.errors.workItemId.message}`);
+            }
+            
             throw error;
         }
     },
