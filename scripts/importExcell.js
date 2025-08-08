@@ -1938,8 +1938,8 @@ async function importAuto(filePath) {
   } catch (err) {
     console.warn('⚠️ [AUTO] importCompleteWAPBOQ gagal, mencoba importCompleteWapBoqv2 (v2)...');
     try {
-      const result2 = await importCompleteWapBoqv2(filePath);
-      console.log('✅ [AUTO] Berhasil import dengan importCompleteWapBoqv2 (v2)');
+      const result2 = await importCompleteWapBoqv3(filePath);
+      console.log('✅ [AUTO] Berhasil import dengan importCompleteWapBoqv3 (v3)');
       return result2;
     } catch (err2) {
       console.error('❌ [AUTO] Kedua metode import gagal.');
