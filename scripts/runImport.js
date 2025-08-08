@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+require('dotenv').config();
 const {
   importExcelToSPK,
   importExcelWAPToSPK,
@@ -6,7 +7,8 @@ const {
   displayBOQItems,
   importAndDisplayBOQItems,
   importCompleteWAPBOQ,
-  importCompleteWapBoqv2
+  importCompleteWapBoqv2,
+  importCompleteWapBoqv3
 } = require("./importExcell.js");
 
 async function main() {
@@ -29,6 +31,7 @@ async function main() {
       console.error("  save-boq - Import BOQ ke database dan tampilkan hasil");
       console.error("  complete - Import lengkap WAP + BOQ sekaligus ⭐");
       console.error("  complete-v2 - Import lengkap WAP + BOQ (versi duplikat)");
+      console.error("  complete-v3 - Import lengkap WAP + BOQ (deteksi otomatis format SPK) 🔄");
       console.error("\n💡 CONTOH:");
       console.error("  node runImport.js old ./SPKRIFANSI.xlsx");
       console.error("  node runImport.js wap ./WAP-BOQ-FILE.xlsx");
@@ -37,6 +40,7 @@ async function main() {
       console.error("  node runImport.js save-boq ./WAP-BOQ-FILE.xlsx");
       console.error("  node runImport.js complete ./WAP-BOQ-FILE.xlsx  ⭐ REKOMENDASI");
       console.error("  node runImport.js complete-v2 ./WAP-BOQ-FILE.xlsx  (versi duplikat)");
+      console.error("  node runImport.js complete-v3 ./WAP-BOQ-FILE.xlsx  (deteksi otomatis format) 🔄");
       process.exit(1);
     }
 
@@ -69,7 +73,7 @@ async function main() {
 
     // Untuk mode yang perlu koneksi database
     console.log("🔌 Menghubungkan ke MongoDB...");
-    await mongoose.connect("mongodb://admin:Palang66@129.150.60.112:27017/testingimport?authSource=admin", {
+    await mongoose.connect(process.env.MONGODB_URI, {
       useNewUrlParser: true,
       useUnifiedTopology: true
     });
@@ -102,8 +106,13 @@ async function main() {
         await importCompleteWapBoqv2(filePath);
         break;
 
+      case 'complete-v3':
+        console.log("🎯 Mode COMPLETE-V3 - Import lengkap WAP + BOQ (deteksi otomatis format SPK)");
+        await importCompleteWapBoqv3(filePath);
+        break;
+
       default:
-        throw new Error(`❌ Mode '${mode}' tidak dikenal. Gunakan: old, wap, test, boq, atau save-boq`);
+        throw new Error(`❌ Mode '${mode}' tidak dikenal. Gunakan: old, wap, test, boq, save-boq, complete, complete-v2, atau complete-v3`);
     }
 
     console.log("✅ Import selesai.");

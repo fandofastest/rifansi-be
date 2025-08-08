@@ -1996,6 +1996,438 @@ function parseNumberCorrectly(value) {
   }
 }
 
+// Fungsi yang dapat mengenali dan menangani kedua format SPK (lama dan baru)
+async function importCompleteWapBoqv3(filePath) {
+  try {
+    console.log("📥 Memulai import lengkap WAP + BOQ (versi 3 - multi-format)...");
+    const workbook = XLSX.readFile(filePath);
+
+    // Cek sheet yang tersedia
+    console.log("📋 Sheet yang tersedia:", Object.keys(workbook.Sheets));
+
+    // Validasi sheets
+    if (!workbook.Sheets["WAP"]) throw new Error("❌ Sheet 'WAP' tidak ditemukan.");
+    // Cari sheet BOQ dengan atau tanpa titik
+    let boqSheetName = null;
+    if (workbook.Sheets["BOQ."]) {
+      boqSheetName = "BOQ.";
+    } else if (workbook.Sheets["BOQ"]) {
+      boqSheetName = "BOQ";
+    } else {
+      throw new Error("❌ Sheet 'BOQ.' atau 'BOQ' tidak ditemukan.");
+    }
+
+    const wapData = XLSX.utils.sheet_to_json(workbook.Sheets["WAP"], { header: 1 });
+    const boqData = XLSX.utils.sheet_to_json(workbook.Sheets[boqSheetName], { header: 1 });
+
+    console.log(`📊 WAP: ${wapData.length} baris | BOQ: ${boqData.length} baris`);
+
+    // ============== BAGIAN 1: EKSTRAKSI METADATA WAP ==============
+    console.log("\n" + "=".repeat(80));
+    console.log("📋 BAGIAN 1: EKSTRAKSI METADATA DARI SHEET WAP");
+    console.log("=".repeat(80));
+
+    const metadata = {};
+    for (const key in wapLabelMap) {
+      metadata[key] = getWAPLabelValue(wapData, key);
+      if (metadata[key]) {
+        console.log(`✅ ${key}: ${metadata[key]}`);
+      }
+    }
+
+    // Ekstrak work description dan budget
+    metadata.workDetailDescription = extractWorkDetailDescriptionWAP(wapData);
+    const budgetFromWAP = getWAPBudgetValue(wapData);
+
+    // Parse tanggal
+    const issuedDate = parseDateSafeWAP(metadata.issuedDate);
+    const startDate = parseDateSafeWAP(metadata.startDate);
+    const endDate = parseDateSafeWAP(metadata.endDate);
+
+    console.log(`📅 Issued Date: ${issuedDate ? issuedDate.toLocaleDateString('id-ID') : 'N/A'}`);
+    console.log(`📅 Start Date: ${startDate ? startDate.toLocaleDateString('id-ID') : 'N/A'}`);
+    console.log(`📅 End Date: ${endDate ? endDate.toLocaleDateString('id-ID') : 'N/A'}`);
+    console.log(`💰 Budget: ${budgetFromWAP ? budgetFromWAP.toLocaleString("id-ID") : 'N/A'}`);
+
+    // ============== BAGIAN 2: SETUP AREA ==============
+    console.log("\n" + "=".repeat(80));
+    console.log("📋 BAGIAN 2: SETUP AREA");
+    console.log("=".repeat(80));
+
+    const locationName = metadata.networkArea || metadata.location || "Unknown Location";
+    console.log(`🔍 Mencari/membuat area: "${locationName}"`);
+
+    const area = await findOrCreate(
+      Area,
+      { name: locationName },
+      { location: { type: 'Point', coordinates: [101.0, -1.0] } }
+    );
+
+    // ============== BAGIAN 3: DETEKSI FORMAT SPK ==============
+    console.log("\n" + "=".repeat(80));
+    console.log("📋 BAGIAN 3: DETEKSI FORMAT SPK");
+    console.log("=".repeat(80));
+
+    const boqStart = detectBOQStartWAP(boqData);
+    if (boqStart <= 0) throw new Error("❌ Header BOQ tidak ditemukan.");
+
+    // Analisis header untuk menentukan format SPK
+    const headerRow = boqData[boqStart - 1];
+    console.log("📊 Header BOQ:", headerRow);
+    
+    // Deteksi format SPK berdasarkan struktur header
+    // Format lama: Unit Rate | Quantity sebagai kategori utama
+    // Format baru: Non Remote | Remote sebagai kategori utama
+    
+    // Pemetaan kolom dinamis
+    const columns = {
+      description: 2,  // Kolom deskripsi umumnya tetap di posisi yang sama
+      unit: 3,         // Kolom unit umumnya tetap di posisi yang sama
+      nonRemoteRate: -1,
+      nonRemoteQty: -1,
+      remoteRate: -1,
+      remoteQty: -1,
+      totalPrice: -1
+    };
+    
+    // Deteksi format dan pemetaan kolom
+    let formatType = "unknown";
+    for (let i = 0; i < headerRow.length; i++) {
+      const cell = headerRow[i];
+      if (typeof cell !== "string") continue;
+      
+      const cellLower = cell.toLowerCase();
+      
+      // Deteksi Total Price (biasanya konsisten di kedua format)
+      if (cellLower.includes("total price")) {
+        columns.totalPrice = i;
+      }
+      
+      // Format Lama: Kategori utama adalah "Unit Rate" dan "Quantity"
+      if (cellLower.includes("unit rate")) {
+        formatType = "old"; // Format lama
+        
+        // Dalam format lama, cek apakah di baris berikutnya ada "Non Remote" dan "Remote"
+        // Kolom NonRemote Rate dan Remote Rate berada di bawah "Unit Rate"
+        if (boqStart < boqData.length) {
+          const subHeaderRow = boqData[boqStart];
+          for (let j = 0; j < subHeaderRow.length; j++) {
+            const subCell = subHeaderRow[j];
+            if (typeof subCell !== "string") continue;
+            
+            const subCellLower = subCell.toLowerCase();
+            if (subCellLower.includes("non remote") && j >= i) {
+              columns.nonRemoteRate = j;
+            }
+            if (subCellLower.includes("remote") && j > columns.nonRemoteRate) {
+              columns.remoteRate = j;
+              break;
+            }
+          }
+        }
+      }
+      
+      // Deteksi kolom Quantity untuk format lama
+      if (cellLower.includes("quantity")) {
+        if (formatType === "old") {
+          // Dalam format lama, cek baris berikutnya untuk Non Remote dan Remote Quantity
+          if (boqStart < boqData.length) {
+            const subHeaderRow = boqData[boqStart];
+            for (let j = 0; j < subHeaderRow.length; j++) {
+              const subCell = subHeaderRow[j];
+              if (typeof subCell !== "string") continue;
+              
+              const subCellLower = subCell.toLowerCase();
+              if (subCellLower.includes("non remote") && j >= i) {
+                columns.nonRemoteQty = j;
+              }
+              if (subCellLower.includes("remote") && j > columns.nonRemoteQty) {
+                columns.remoteQty = j;
+                break;
+              }
+            }
+          }
+        }
+      }
+      
+      // Format Baru: Kategori utama adalah "Non Remote" dan "Remote"
+      if (cellLower.includes("non remote")) {
+        formatType = "new"; // Format baru
+        
+        // Dalam format baru, cek baris berikutnya untuk Rate dan Qty
+        if (boqStart < boqData.length) {
+          const subHeaderRow = boqData[boqStart];
+          for (let j = 0; j < subHeaderRow.length; j++) {
+            const subCell = subHeaderRow[j];
+            if (typeof subCell !== "string") continue;
+            
+            const subCellLower = subCell.toLowerCase();
+            // Jika indeks kolom berada dalam rentang Non Remote
+            if (j >= i && j < i + 2) { // Asumsi Non Remote mencakup 2 kolom
+              if (subCellLower.includes("rate")) {
+                columns.nonRemoteRate = j;
+              }
+              if (subCellLower.includes("qty")) {
+                columns.nonRemoteQty = j;
+              }
+            }
+          }
+        }
+      }
+      
+      if (cellLower.includes("remote") && !cellLower.includes("non")) {
+        if (formatType === "new") {
+          // Dalam format baru, cek baris berikutnya untuk Rate dan Qty
+          if (boqStart < boqData.length) {
+            const subHeaderRow = boqData[boqStart];
+            for (let j = 0; j < subHeaderRow.length; j++) {
+              const subCell = subHeaderRow[j];
+              if (typeof subCell !== "string") continue;
+              
+              const subCellLower = subCell.toLowerCase();
+              // Jika indeks kolom berada dalam rentang Remote
+              if (j >= i && j < i + 2) { // Asumsi Remote mencakup 2 kolom
+                if (subCellLower.includes("rate")) {
+                  columns.remoteRate = j;
+                }
+                if (subCellLower.includes("qty")) {
+                  columns.remoteQty = j;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    // Jika kolom penting tidak ditemukan, coba deteksi dengan cara alternatif
+    if (columns.nonRemoteRate === -1 || columns.nonRemoteQty === -1 || columns.totalPrice === -1) {
+      console.log("⚠️ Beberapa kolom penting tidak terdeteksi, mencoba deteksi alternatif...");
+      
+      // Format lama secara default
+      if (formatType === "unknown" || formatType === "old") {
+        columns.nonRemoteRate = 4;  // Asumsi posisi default
+        columns.remoteRate = 5;      // Asumsi posisi default
+        columns.nonRemoteQty = 6;    // Asumsi posisi default
+        columns.remoteQty = 7;       // Asumsi posisi default
+        columns.totalPrice = 8;      // Asumsi posisi default
+      } 
+      // Format baru secara default
+      else if (formatType === "new") {
+        columns.nonRemoteRate = 4;  // Asumsi posisi default
+        columns.nonRemoteQty = 5;    // Asumsi posisi default
+        columns.remoteRate = 6;      // Asumsi posisi default
+        columns.remoteQty = 7;       // Asumsi posisi default
+        columns.totalPrice = 8;      // Asumsi posisi default
+      }
+    }
+    
+    console.log(`🔍 Format SPK terdeteksi: ${formatType.toUpperCase()}`);
+    console.log("📊 Pemetaan kolom:", columns);
+    
+    // ============== BAGIAN 4: PROSES BOQ ==============
+    console.log("\n" + "=".repeat(80));
+    console.log("📋 BAGIAN 4: PROSES BOQ DAN SIMPAN WORK ITEMS");
+    console.log("=".repeat(80));
+
+    let currentCategory = "";
+    let currentSubCategory = "";
+    let itemCount = 0;
+    let categoryCount = 0;
+    let subCategoryCount = 0;
+    const workItems = [];
+
+    // Setelah header, skip header sekunder jika ada
+    let i = boqStart + (formatType === "old" || formatType === "new" ? 1 : 0);
+    while (i < boqData.length) {
+      // 1. Ambil kategori utama
+      const catRow = boqData[i];
+      // Skip baris jika row[0] mengandung 'TOTAL' atau row[columns.totalPrice] adalah angka (bukan kategori)
+      const parseNum = v => {
+        if (v == null) return NaN;
+        // Gunakan parseNumberCorrectly untuk konsistensi
+        return parseNumberCorrectly(v);
+      };
+      if (!Array.isArray(catRow) || !catRow[0] || String(catRow[0]).trim() === "" ||
+        String(catRow[0]).toLowerCase().includes('total') ||
+        (!isNaN(parseNum(catRow[columns.totalPrice])) && parseNum(catRow[columns.totalPrice]) !== 0)) {
+        i++;
+        continue;
+      }
+      currentCategory = String(catRow[0]).trim();
+      categoryCount++;
+      console.log(`KATEGORI: ${currentCategory}`);
+      i++;
+      // 2. Ambil subkategori dari baris di bawah kategori, gabungkan cell 0-2
+      const subRow = boqData[i];
+      if (subRow && (subRow[0] || subRow[1] || subRow[2])) {
+        currentSubCategory = [subRow[0], subRow[1], subRow[2]]
+          .map(cell => (cell ? String(cell).trim() : ""))
+          .join(" ")
+          .replace(/scope of work/gi, "")
+          .replace(/\s+/g, " ")
+          .trim();
+        if (currentSubCategory) {
+          subCategoryCount++;
+          console.log(`  SUBKATEGORI: ${currentSubCategory}`);
+        }
+      } else {
+        currentSubCategory = "";
+      }
+      i++;
+      // 3. Proses work item di bawah subkategori
+      while (i < boqData.length) {
+        const row = boqData[i];
+        // Stop jika baris ini adalah kategori baru (huruf besar semua di cell 0)
+        if (typeof row[0] === 'string' && row[0] === row[0].toUpperCase() && row[0].trim().length > 0) break;
+        if (!row[columns.description] || String(row[columns.description]).trim() === "") { i++; continue; }
+        const isWorkItem = (
+          Array.isArray(row) &&
+          typeof row[columns.description] === 'string' && row[columns.description].trim() !== '' &&
+          (
+            !isNaN(parseNum(row[columns.nonRemoteRate])) ||
+            !isNaN(parseNum(row[columns.nonRemoteQty])) ||
+            !isNaN(parseNum(row[columns.totalPrice]))
+          )
+        );
+        if (isWorkItem) {
+          let workItemName = row[columns.description]?.toString().trim() || "";
+          let unit = row[columns.unit]?.toString().trim() || "Unit";
+          // Gunakan parseNumberCorrectly untuk parsing yang lebih akurat
+          const nonRemoteRate = parseNumberCorrectly(row[columns.nonRemoteRate]);
+          const nonRemoteQty = parseNumberCorrectly(row[columns.nonRemoteQty]);
+          const remoteRate = parseNumberCorrectly(row[columns.remoteRate]);
+          const remoteQty = parseNumberCorrectly(row[columns.remoteQty]);
+          const totalPrice = parseNumberCorrectly(row[columns.totalPrice]);
+          console.log(`    ITEM: ${workItemName} | Unit: ${unit} | NR Rate: ${nonRemoteRate} | NR Qty: ${nonRemoteQty} | R Rate: ${remoteRate} | R Qty: ${remoteQty} | Total: ${totalPrice}`);
+          try {
+            // Cari/buat kategori, subkategori, unit
+            const category = await findOrCreate(Category, { name: currentCategory }, { code: currentCategory.slice(0, 5) });
+            const subCategory = await findOrCreate(SubCategory, { name: currentSubCategory, categoryId: category._id });
+            const unitDoc = await findOrCreate(Unit, { name: unit }, { code: unit });
+
+            // Cari/buat work item
+            const workItemData = {
+              name: workItemName,
+              categoryId: category._id,
+              subCategoryId: subCategory._id,
+              unitId: unitDoc._id,
+              description: workItemName,
+              rates: {
+                nr: {
+                  rate: nonRemoteRate,
+                  description: 'Non-remote rate'
+                },
+                r: {
+                  rate: remoteRate || 0,
+                  description: 'Remote rate'
+                }
+              }
+            };
+            const workItem = await findOrCreate(WorkItem, { name: workItemName }, workItemData);
+            workItems.push({
+              workItemId: workItem._id,
+              boqVolume: { nr: nonRemoteQty, r: remoteQty || 0 },
+              rates: { nr: { rate: nonRemoteRate }, r: { rate: remoteRate || 0 } },
+              description: workItemName
+            });
+            itemCount++;
+            console.log(`      💾 Tersimpan: ${workItemName} (${category.name} > ${subCategory.name})`);
+          } catch (error) {
+            console.error(`      ❌ Error menyimpan work item: ${error.message}`);
+          }
+        }
+        i++;
+      }
+    }
+
+    // Gunakan budget dari WAP sheet, tapi validasi dengan BOQ jika perlu
+    let finalBudget = budgetFromWAP || 0;
+    const boqTotal = detectExplicitBudgetWAP(boqData);
+
+    if (boqTotal && Math.abs(finalBudget - boqTotal) > 1000) {
+      console.warn(`⚠️ Budget WAP (${finalBudget.toLocaleString("id-ID")}) berbeda dengan BOQ (${boqTotal.toLocaleString("id-ID")})`);      console.log(`📊 Menggunakan budget dari WAP: ${finalBudget.toLocaleString("id-ID")}`);
+    }
+
+    // Buat SPK
+    const spkData = {
+      spkNo: metadata.spkNo,
+      wapNo: metadata.wapNo,
+      title: metadata.workTitle,
+      projectName: metadata.projectName,
+      contractor: metadata.assignedTo,
+      date: issuedDate || new Date(),
+      startDate: startDate,
+      endDate: endDate,
+      duration: parseInt(metadata.duration) || 0,
+      workDescription: metadata.workDetailDescription,
+      location: area._id,
+      budget: finalBudget,
+      workItems
+    };
+
+    // Cek apakah SPK sudah ada
+    const existingSPK = await SPK.findOne({ spkNo: metadata.spkNo });
+    let newSPK;
+
+    if (existingSPK) {
+      console.log(`⚠️  SPK "${metadata.spkNo}" sudah ada, akan diupdate...`);
+      newSPK = await SPK.findByIdAndUpdate(existingSPK._id, spkData, { new: true });
+      console.log(`🔄 SPK "${metadata.spkNo}" berhasil diupdate.`);
+    } else {
+      newSPK = await SPK.create(spkData);
+      console.log(`🆕 SPK "${metadata.spkNo}" berhasil dibuat.`);
+    }
+
+    // ============== BAGIAN 5: RINGKASAN ==============
+    console.log("\n" + "=".repeat(80));
+    console.log("📊 RINGKASAN IMPORT LENGKAP");
+    console.log("=".repeat(80));
+
+    const totalWorkItems = await WorkItem.countDocuments();
+    const totalCategories = await Category.countDocuments();
+    const totalSubCategories = await SubCategory.countDocuments();
+    const totalUnits = await Unit.countDocuments();
+    const totalAreas = await Area.countDocuments();
+    const totalSPKs = await SPK.countDocuments();
+
+    console.log(`🎉 BERHASIL IMPORT SPK: ${metadata.spkNo}`);
+    console.log(`📋 SPK ID: ${newSPK._id}`);
+    console.log(`💰 Budget: ${(budgetFromWAP || 0).toLocaleString("id-ID")}`);
+    console.log(`📦 Work Items di SPK: ${workItems.length}`);
+    console.log(`📅 Periode: ${startDate ? startDate.toLocaleDateString('id-ID') : 'N/A'} - ${endDate ? endDate.toLocaleDateString('id-ID') : 'N/A'}`);
+
+    console.log(`\n📊 TOTAL DATA DI DATABASE:`);
+    console.log(`📄 Total SPKs: ${totalSPKs}`);
+    console.log(`📦 Total WorkItems: ${totalWorkItems}`);
+    console.log(`📂 Total Categories: ${totalCategories}`);
+    console.log(`📁 Total SubCategories: ${totalSubCategories}`);
+    console.log(`📏 Total Units: ${totalUnits}`);
+    console.log(`🌍 Total Areas: ${totalAreas}`);
+
+    return {
+      spk: newSPK,
+      stats: {
+        categoriesProcessed: categoryCount,
+        subCategoriesProcessed: subCategoryCount,
+        workItemsProcessed: itemCount,
+        totalInDB: {
+          spks: totalSPKs,
+          workItems: totalWorkItems,
+          categories: totalCategories,
+          subCategories: totalSubCategories,
+          units: totalUnits,
+          areas: totalAreas
+        }
+      }
+    };
+
+  } catch (error) {
+    console.error("❌ Error import:", error.message);
+    throw error;
+  }
+}
+
 module.exports = {
   importExcelToSPK,           // Fungsi asli untuk format lama
   importExcelWAPToSPK,        // Fungsi baru untuk format WAP
@@ -2004,5 +2436,6 @@ module.exports = {
   importAndDisplayBOQItems,   // Fungsi untuk import dan tampilkan dari DB
   importCompleteWAPBOQ,        // Fungsi baru: import lengkap WAP + BOQ
   importCompleteWapBoqv2,      // Fungsi duplikat: import lengkap WAP + BOQ versi 2
+  importCompleteWapBoqv3,      // Fungsi baru: import lengkap WAP + BOQ dengan deteksi format otomatis
   importAuto
 };

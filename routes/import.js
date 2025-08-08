@@ -7,7 +7,8 @@ const {
   importExcelToSPK,
   importCompleteWAPBOQ,
   testExtractWAPMetadata,
-  importAuto
+  importAuto,
+  importCompleteWapBoqv3
 } = require('../scripts/importExcell');
 
 // Konfigurasi multer untuk menyimpan file upload
@@ -95,19 +96,19 @@ router.post('/import-spk', upload.single('excelFile'), async (req, res) => {
     }
 
     const filePath = req.file.path;
-    console.log(`📥 File berhasil diupload (format WAP): ${filePath}`);
+    console.log(`📥 File berhasil diupload (multi-format SPK): ${filePath}`);
 
-    // Jalankan import format WAP lengkap
-    const result = await importCompleteWAPBOQ(filePath);
+    // Jalankan import multi-format SPK (mendukung semua format SPK)
+    const result = await importCompleteWapBoqv3(filePath);
 
     // Hapus file setelah diproses
     fs.unlinkSync(filePath);
 
     return res.status(200).json({
       success: true,
-      message: 'SPK format WAP berhasil diimport',
+      message: 'SPK berhasil diimport (multi-format)',
       file: req.file.originalname,
-      format: 'wap',
+      format: 'auto',
       data: {
         spkId: result.spk._id,
         spkNo: result.spk.spkNo,
