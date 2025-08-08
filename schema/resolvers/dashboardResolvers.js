@@ -35,10 +35,8 @@ const dashboardResolvers = {
         const oneYearAgo = new Date();
         oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
         
-        // Get all SPKs for the last year with full details
-        const spks = await SPK.find({
-          date: { $gte: oneYearAgo }
-        })
+        // Get all SPKs with full details (no date filter to include all SPKs)
+        const spks = await SPK.find({})
         .populate({
           path: 'location',
           select: 'id name location'
