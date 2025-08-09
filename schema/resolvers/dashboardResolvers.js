@@ -37,40 +37,33 @@ const dashboardResolvers = {
         
         // Get all SPKs with full details (no date filter to include all SPKs)
         const spks = await SPK.find({})
-          .populate('location')
-          .populate({
-            path: 'workItems.workItemId',
-            populate: [
-              {
-                path: 'categoryId',
-                select: 'name'
-              },
-              {
-                path: 'subCategoryId',
-                select: 'name'
-              },
-              {
-                path: 'unitId',
-                select: 'name'
-              }
-            ]
-          });
-
-        // Get daily activities for these SPKs
-        const dailyActivities = await DailyActivity.find({
-          spkId: { $in: spks.map(spk => spk._id) }
-        }).populate('spkId');
+        .populate({
+          path: 'location',
+          select: 'id name location'
+        })
+        .populate({
+          path: 'workItems.workItemId',
+          populate: [
+            {
+              path: 'categoryId',
+              select: 'id name'
+            },
+            {
+              path: 'subCategoryId',
+              select: 'id name'
+            },
+            {
+              path: 'unitId',
+              select: 'id name'
+            }
+          ]
+        });
         
-        // Get activity details for these daily activities
-        const activityDetails = await ActivityDetail.find({
-          dailyActivityId: { $in: dailyActivities.map(da => da._id) }
-        }).populate('workItemId');
-
         // Get all borrow pits
         const borrowPits = await BorrowPit.find({});
         
         // Get all daily activities for the last year
-        const dailyActivitiesLastYear = await DailyActivity.find({
+        const dailyActivities = await DailyActivity.find({
           isActive: { $ne: false },
           date: { $gte: oneYearAgo }
         });
@@ -299,7 +292,7 @@ const dashboardResolvers = {
 
         // Get all daily activities for each SPK for progress calculation
         const spkDailyActivities = {};
-        for (const da of dailyActivitiesLastYear) {
+        for (const da of dailyActivities) {
           if (!da.spkId) continue;
           const spkId = da.spkId.toString();
           if (!spkDailyActivities[spkId]) {
@@ -309,39 +302,42 @@ const dashboardResolvers = {
         }
 
         // Calculate enhanced SPK Performance with details like spkDetailsWithProgress
-        const spkPerformance = spks.map(spk => {
+        const spkPerformance = await Promise.all(spks.map(async spk => {
           const totalWorkItemsAmount = spk.workItems.reduce((total, item) => total + (item.amount || 0), 0);
           
           // Calculate progress for each work item based on activity details
           const spkId = spk._id.toString();
           const spkActivities = spkDailyActivities[spkId] || [];
           
-          // Calculate overall progress percentage using BOQ approach (like in spkDetailsWithProgress)
-          // Get all activity details for the current SPK's activities
-          const spkActivityIds = spkActivities.map(activity => activity._id);
-          const activityDetailsForSpk = activityDetails.filter(detail => 
-            detail.dailyActivityId && spkActivityIds.includes(detail.dailyActivityId.toString()));
+          // Gunakan logika yang sama dengan spkDetailsWithProgress untuk progress
+          // Get all activity details for these daily activities
+          const activityDetails = await ActivityDetail.find({
+            dailyActivityId: { $in: spkActivities.map(da => da._id) }
+          }).populate('workItemId');
           
-          // Calculate total target BOQ for this SPK
+          // Calculate total BOQ volumes for target and completed seperti di spkDetailsWithProgress
           const totalTargetBOQ = spk.workItems.reduce((total, item) => {
             const nr = item.boqVolume?.nr || 0;
             const r = item.boqVolume?.r || 0;
             return total + nr + r;
           }, 0);
           
-          // Calculate completed BOQ for this SPK from activity details
-          const totalCompletedBOQ = activityDetailsForSpk.reduce((total, detail) => {
+          const totalCompletedBOQ = activityDetails.reduce((total, detail) => {
             const nr = detail.actualQuantity?.nr || 0;
             const r = detail.actualQuantity?.r || 0;
             return total + nr + r;
           }, 0);
           
-          // Calculate BOQ-based progress percentage
+          // BOQ-based progress percentage: (completed / target) * 100
           const boqProgressPercentage = totalTargetBOQ > 0 ? (totalCompletedBOQ / totalTargetBOQ) * 100 : 0;
           
-          // For compatibility with existing code, we'll still keep these variables
-          let completedAmount = totalCompletedBOQ;
-          const totalAmount = totalTargetBOQ;
+          // Debug logging untuk melihat perhitungan BOQ
+          console.log(`[Dashboard BOQ Debug] SPK ${spk.spkNo}:`);
+          console.log(`  - Total Target BOQ: ${totalTargetBOQ}`);
+          console.log(`  - Total Completed BOQ: ${totalCompletedBOQ}`);
+          console.log(`  - BOQ Progress Percentage: ${boqProgressPercentage}%`);
+          console.log(`  - Activity Details Count: ${activityDetails.length}`);
+          console.log(`  - SPK Activities Count: ${spkActivities.length}`);
           
           // Get detailed work items with progress
           const workItems = [];
@@ -450,10 +446,13 @@ const dashboardResolvers = {
             }
           };
           
-          // Calculate progress metrics
-          const workItemCompletionPercentage = boqProgressPercentage; // Use the BOQ-based progress calculation
+          // Calculate progress metrics menggunakan nilai progress fisik (boqProgressPercentage)
+          const workItemCompletionPercentage = boqProgressPercentage;
           const budgetUtilizationPercentage = spkBudget > 0 ? (spkTotalActualCost / spkBudget) * 100 : 0;
-          const plannedVsActualCostRatio = spkTotalPlannedCost > 0 ? (spkTotalActualCost / spkTotalPlannedCost) * 100 : 0;
+          
+          // PlannedVsActualCostRatio langsung menggunakan nilai boqProgressPercentage
+          // (mengabaikan perhitungan biaya sesuai permintaan)
+          const plannedVsActualCostRatio = boqProgressPercentage;
           
           return {
             spkId: spk._id.toString(),
@@ -471,8 +470,8 @@ const dashboardResolvers = {
               longitude: spk.location.location && spk.location.location.coordinates ? spk.location.location.coordinates[0] : null
             } : null,
             workItems: workItems,
-            completedAmount: completedAmount,
-            progressPercentage: boqProgressPercentage, // Use BOQ-based progress percentage
+            completedAmount: totalCompletedBOQ,
+            progressPercentage: boqProgressPercentage,
             activityCount: spkActivities.length,
             // New fields for enhanced financial metrics
             totalProgress: {
@@ -487,7 +486,7 @@ const dashboardResolvers = {
               costBreakdown: costBreakdown
             }
           };
-        });
+        }));
 
         // Chart data - Cost Breakdown (Total cost per kategori)
         const totalMaterialCost = materialLogs.reduce((total, log) => 
