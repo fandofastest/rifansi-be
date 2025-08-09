@@ -37,33 +37,40 @@ const dashboardResolvers = {
         
         // Get all SPKs with full details (no date filter to include all SPKs)
         const spks = await SPK.find({})
-        .populate({
-          path: 'location',
-          select: 'id name location'
-        })
-        .populate({
-          path: 'workItems.workItemId',
-          populate: [
-            {
-              path: 'categoryId',
-              select: 'id name'
-            },
-            {
-              path: 'subCategoryId',
-              select: 'id name'
-            },
-            {
-              path: 'unitId',
-              select: 'id name'
-            }
-          ]
-        });
+          .populate('location')
+          .populate({
+            path: 'workItems.workItemId',
+            populate: [
+              {
+                path: 'categoryId',
+                select: 'name'
+              },
+              {
+                path: 'subCategoryId',
+                select: 'name'
+              },
+              {
+                path: 'unitId',
+                select: 'name'
+              }
+            ]
+          });
+
+        // Get daily activities for these SPKs
+        const dailyActivities = await DailyActivity.find({
+          spkId: { $in: spks.map(spk => spk._id) }
+        }).populate('spkId');
         
+        // Get activity details for these daily activities
+        const activityDetails = await ActivityDetail.find({
+          dailyActivityId: { $in: dailyActivities.map(da => da._id) }
+        }).populate('workItemId');
+
         // Get all borrow pits
         const borrowPits = await BorrowPit.find({});
         
         // Get all daily activities for the last year
-        const dailyActivities = await DailyActivity.find({
+        const dailyActivitiesLastYear = await DailyActivity.find({
           isActive: { $ne: false },
           date: { $gte: oneYearAgo }
         });
@@ -292,7 +299,7 @@ const dashboardResolvers = {
 
         // Get all daily activities for each SPK for progress calculation
         const spkDailyActivities = {};
-        for (const da of dailyActivities) {
+        for (const da of dailyActivitiesLastYear) {
           if (!da.spkId) continue;
           const spkId = da.spkId.toString();
           if (!spkDailyActivities[spkId]) {
@@ -309,9 +316,32 @@ const dashboardResolvers = {
           const spkId = spk._id.toString();
           const spkActivities = spkDailyActivities[spkId] || [];
           
-          // Calculate overall progress percentage
-          let completedAmount = 0;
-          const totalAmount = totalWorkItemsAmount;
+          // Calculate overall progress percentage using BOQ approach (like in spkDetailsWithProgress)
+          // Get all activity details for the current SPK's activities
+          const spkActivityIds = spkActivities.map(activity => activity._id);
+          const activityDetailsForSpk = activityDetails.filter(detail => 
+            detail.dailyActivityId && spkActivityIds.includes(detail.dailyActivityId.toString()));
+          
+          // Calculate total target BOQ for this SPK
+          const totalTargetBOQ = spk.workItems.reduce((total, item) => {
+            const nr = item.boqVolume?.nr || 0;
+            const r = item.boqVolume?.r || 0;
+            return total + nr + r;
+          }, 0);
+          
+          // Calculate completed BOQ for this SPK from activity details
+          const totalCompletedBOQ = activityDetailsForSpk.reduce((total, detail) => {
+            const nr = detail.actualQuantity?.nr || 0;
+            const r = detail.actualQuantity?.r || 0;
+            return total + nr + r;
+          }, 0);
+          
+          // Calculate BOQ-based progress percentage
+          const boqProgressPercentage = totalTargetBOQ > 0 ? (totalCompletedBOQ / totalTargetBOQ) * 100 : 0;
+          
+          // For compatibility with existing code, we'll still keep these variables
+          let completedAmount = totalCompletedBOQ;
+          const totalAmount = totalTargetBOQ;
           
           // Get detailed work items with progress
           const workItems = [];
@@ -421,7 +451,7 @@ const dashboardResolvers = {
           };
           
           // Calculate progress metrics
-          const workItemCompletionPercentage = totalAmount > 0 ? (completedAmount / totalAmount) * 100 : 0;
+          const workItemCompletionPercentage = boqProgressPercentage; // Use the BOQ-based progress calculation
           const budgetUtilizationPercentage = spkBudget > 0 ? (spkTotalActualCost / spkBudget) * 100 : 0;
           const plannedVsActualCostRatio = spkTotalPlannedCost > 0 ? (spkTotalActualCost / spkTotalPlannedCost) * 100 : 0;
           
@@ -442,7 +472,7 @@ const dashboardResolvers = {
             } : null,
             workItems: workItems,
             completedAmount: completedAmount,
-            progressPercentage: totalAmount > 0 ? (completedAmount / totalAmount) * 100 : 0,
+            progressPercentage: boqProgressPercentage, // Use BOQ-based progress percentage
             activityCount: spkActivities.length,
             // New fields for enhanced financial metrics
             totalProgress: {
