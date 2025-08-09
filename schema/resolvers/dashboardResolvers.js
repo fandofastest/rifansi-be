@@ -183,28 +183,7 @@ const dashboardResolvers = {
           }
         });
         
-        // Convert to array and format
-        const monthlySales = Object.values(monthlyData)
-          .map(data => ({
-            year: data.year,
-            month: data.month,
-            monthName: {
-              1: 'Januari', 2: 'Februari', 3: 'Maret', 4: 'April', 5: 'Mei', 6: 'Juni',
-              7: 'Juli', 8: 'Agustus', 9: 'September', 10: 'Oktober', 11: 'November', 12: 'Desember'
-            }[data.month] || 'Unknown',
-            sales: data.sales,
-            cost: data.cost,
-            costBreakdown: {
-              material: data.costBreakdown.material,
-              manpower: data.costBreakdown.manpower,
-              equipment: data.costBreakdown.equipment,
-              other: data.costBreakdown.other
-            },
-            profit: data.sales - data.cost,
-            profitMargin: data.sales > 0 ? ((data.sales - data.cost) / data.sales) * 100 : 0,
-            spkCount: data.spkCount
-          }))
-          .sort((a, b) => a.year - b.year || a.month - b.month);
+        // Convert to array and format - removed duplicate monthlySales definition
         
         // Monthly capaian untuk semua SPK (berdasarkan DailyActivity)
         const monthlyCapaian = await DailyActivity.aggregate([
@@ -635,6 +614,16 @@ const dashboardResolvers = {
         const totalCosts = Object.values(monthlyData).reduce((total, item) => total + item.cost, 0);
         
         // We'll use the costBreakdown object that's already defined below
+        
+        // Format monthly sales for schema (berdasarkan total itemwork cost per bulan)
+        const monthlySales = Object.values(monthlyData).map(item => ({
+          year: item.year,
+          month: item.month,
+          monthName: getMonthName(item.month),
+          amount: item.sales, // Total itemwork cost (workItems amount) per bulan
+          totalSales: item.sales,
+          count: item.spkCount || 0
+        }));
         
         // Format monthly costs for schema
         const monthlyCosts = Object.values(monthlyData).map(item => ({
