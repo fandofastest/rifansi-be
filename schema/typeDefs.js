@@ -611,7 +611,7 @@ const typeDefs = gql`
     holidayByDate(date: String!): Holiday
     isHoliday(date: String!): Boolean!
 
-    spkDetailsWithProgress(spkId: ID!): SPKDetailsWithProgress!
+    spkDetailsWithProgress(spkId: ID!, startDate: String, endDate: String): SPKDetailsWithProgress!
     spkWithProgressBySpkId(spkId: ID!): SPKWithProgressSummary!
 
     # ApproverSetting Queries

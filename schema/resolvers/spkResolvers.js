@@ -354,7 +354,7 @@ const Query = {
         };
     },
 
-    spkDetailsWithProgress: async (_, { spkId }, { user }) => {
+    spkDetailsWithProgress: async (_, { spkId, startDate, endDate }, { user }) => {
         if (!user) throw new Error('Not authenticated');
 
         const spk = await SPK.findById(spkId)
@@ -385,12 +385,28 @@ const Query = {
         // Debug log tambahan
         console.log('DAFTAR workItemId di spk.workItems:', spk.workItems.map(item => String(item.workItemId)));
 
-        // Get all daily activities for this SPK
-        const dailyActivities = await DailyActivity.find({ spkId: spk._id })
+        // Build date filter if provided
+        const daFilter = { spkId: spk._id };
+        if (startDate || endDate) {
+            daFilter.date = {};
+            if (startDate) daFilter.date.$gte = new Date(startDate);
+            if (endDate) {
+                // include the entire end day by setting time to 23:59:59.999
+                const end = new Date(endDate);
+                if (!isNaN(end)) {
+                    end.setHours(23, 59, 59, 999);
+                }
+                daFilter.date.$lte = end;
+            }
+        }
+
+        // Get daily activities for this SPK with optional date range
+        const dailyActivities = await DailyActivity.find(daFilter)
             .populate('createdBy', 'fullName')
             .populate('spkId', 'spkNo title') || [];
 
         console.log(`[SPK Progress Debug] SPK ID: ${spkId}`);
+        console.log(`[SPK Progress Debug] Date Filter:`, { startDate, endDate, daFilterDate: daFilter.date });
         console.log(`[SPK Progress Debug] Daily Activities Count: ${dailyActivities.length}`);
 
         // Get all activity details for these daily activities
