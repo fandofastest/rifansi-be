@@ -35,10 +35,8 @@ const dashboardResolvers = {
         const oneYearAgo = new Date();
         oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
         
-        // Get all SPKs for the last year with full details
-        const spks = await SPK.find({
-          date: { $gte: oneYearAgo }
-        })
+        // Get all SPKs with full details (no date filter to include all SPKs)
+        const spks = await SPK.find({})
         .populate({
           path: 'location',
           select: 'id name location'
@@ -185,28 +183,7 @@ const dashboardResolvers = {
           }
         });
         
-        // Convert to array and format
-        const monthlySales = Object.values(monthlyData)
-          .map(data => ({
-            year: data.year,
-            month: data.month,
-            monthName: {
-              1: 'Januari', 2: 'Februari', 3: 'Maret', 4: 'April', 5: 'Mei', 6: 'Juni',
-              7: 'Juli', 8: 'Agustus', 9: 'September', 10: 'Oktober', 11: 'November', 12: 'Desember'
-            }[data.month] || 'Unknown',
-            sales: data.sales,
-            cost: data.cost,
-            costBreakdown: {
-              material: data.costBreakdown.material,
-              manpower: data.costBreakdown.manpower,
-              equipment: data.costBreakdown.equipment,
-              other: data.costBreakdown.other
-            },
-            profit: data.sales - data.cost,
-            profitMargin: data.sales > 0 ? ((data.sales - data.cost) / data.sales) * 100 : 0,
-            spkCount: data.spkCount
-          }))
-          .sort((a, b) => a.year - b.year || a.month - b.month);
+        // Convert to array and format - removed duplicate monthlySales definition
         
         // Monthly capaian untuk semua SPK (berdasarkan DailyActivity)
         const monthlyCapaian = await DailyActivity.aggregate([
@@ -304,16 +281,42 @@ const dashboardResolvers = {
         }
 
         // Calculate enhanced SPK Performance with details like spkDetailsWithProgress
-        const spkPerformance = spks.map(spk => {
+        const spkPerformance = await Promise.all(spks.map(async spk => {
           const totalWorkItemsAmount = spk.workItems.reduce((total, item) => total + (item.amount || 0), 0);
           
           // Calculate progress for each work item based on activity details
           const spkId = spk._id.toString();
           const spkActivities = spkDailyActivities[spkId] || [];
           
-          // Calculate overall progress percentage
-          let completedAmount = 0;
-          const totalAmount = totalWorkItemsAmount;
+          // Gunakan logika yang sama dengan spkDetailsWithProgress untuk progress
+          // Get all activity details for these daily activities
+          const activityDetails = await ActivityDetail.find({
+            dailyActivityId: { $in: spkActivities.map(da => da._id) }
+          }).populate('workItemId');
+          
+          // Calculate total BOQ volumes for target and completed seperti di spkDetailsWithProgress
+          const totalTargetBOQ = spk.workItems.reduce((total, item) => {
+            const nr = item.boqVolume?.nr || 0;
+            const r = item.boqVolume?.r || 0;
+            return total + nr + r;
+          }, 0);
+          
+          const totalCompletedBOQ = activityDetails.reduce((total, detail) => {
+            const nr = detail.actualQuantity?.nr || 0;
+            const r = detail.actualQuantity?.r || 0;
+            return total + nr + r;
+          }, 0);
+          
+          // BOQ-based progress percentage: (completed / target) * 100
+          const boqProgressPercentage = totalTargetBOQ > 0 ? (totalCompletedBOQ / totalTargetBOQ) * 100 : 0;
+          
+          // Debug logging untuk melihat perhitungan BOQ
+          console.log(`[Dashboard BOQ Debug] SPK ${spk.spkNo}:`);
+          console.log(`  - Total Target BOQ: ${totalTargetBOQ}`);
+          console.log(`  - Total Completed BOQ: ${totalCompletedBOQ}`);
+          console.log(`  - BOQ Progress Percentage: ${boqProgressPercentage}%`);
+          console.log(`  - Activity Details Count: ${activityDetails.length}`);
+          console.log(`  - SPK Activities Count: ${spkActivities.length}`);
           
           // Get detailed work items with progress
           const workItems = [];
@@ -422,10 +425,13 @@ const dashboardResolvers = {
             }
           };
           
-          // Calculate progress metrics
-          const workItemCompletionPercentage = totalAmount > 0 ? (completedAmount / totalAmount) * 100 : 0;
+          // Calculate progress metrics menggunakan nilai progress fisik (boqProgressPercentage)
+          const workItemCompletionPercentage = boqProgressPercentage;
           const budgetUtilizationPercentage = spkBudget > 0 ? (spkTotalActualCost / spkBudget) * 100 : 0;
-          const plannedVsActualCostRatio = spkTotalPlannedCost > 0 ? (spkTotalActualCost / spkTotalPlannedCost) * 100 : 0;
+          
+          // PlannedVsActualCostRatio langsung menggunakan nilai boqProgressPercentage
+          // (mengabaikan perhitungan biaya sesuai permintaan)
+          const plannedVsActualCostRatio = boqProgressPercentage;
           
           return {
             spkId: spk._id.toString(),
@@ -443,8 +449,8 @@ const dashboardResolvers = {
               longitude: spk.location.location && spk.location.location.coordinates ? spk.location.location.coordinates[0] : null
             } : null,
             workItems: workItems,
-            completedAmount: completedAmount,
-            progressPercentage: totalAmount > 0 ? (completedAmount / totalAmount) * 100 : 0,
+            completedAmount: totalCompletedBOQ,
+            progressPercentage: boqProgressPercentage,
             activityCount: spkActivities.length,
             // New fields for enhanced financial metrics
             totalProgress: {
@@ -459,7 +465,7 @@ const dashboardResolvers = {
               costBreakdown: costBreakdown
             }
           };
-        });
+        }));
 
         // Chart data - Cost Breakdown (Total cost per kategori)
         const totalMaterialCost = materialLogs.reduce((total, log) => 
@@ -608,6 +614,16 @@ const dashboardResolvers = {
         const totalCosts = Object.values(monthlyData).reduce((total, item) => total + item.cost, 0);
         
         // We'll use the costBreakdown object that's already defined below
+        
+        // Format monthly sales for schema (berdasarkan total itemwork cost per bulan)
+        const monthlySales = Object.values(monthlyData).map(item => ({
+          year: item.year,
+          month: item.month,
+          monthName: getMonthName(item.month),
+          amount: item.sales, // Total itemwork cost (workItems amount) per bulan
+          totalSales: item.sales,
+          count: item.spkCount || 0
+        }));
         
         // Format monthly costs for schema
         const monthlyCosts = Object.values(monthlyData).map(item => ({
