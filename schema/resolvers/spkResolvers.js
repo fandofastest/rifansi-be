@@ -1062,8 +1062,8 @@ const Query = {
             const progressPercentage = totalTarget > 0 ? (totalCompleted / totalTarget) * 100 : 0;
 
             // Calculate financial progress
-            const nrRate = workItemData.rates?.nr?.rate || 0;
-            const rRate = workItemData.rates?.r?.rate || 0;
+            const nrRate = spkWorkItem.rates?.nr?.rate ?? 0;
+            const rRate = spkWorkItem.rates?.r?.rate ?? 0;
             const totalAmount = (boqVolume.nr * nrRate) + (boqVolume.r * rRate);
             const spentAmount = (completedNr * nrRate) + (completedR * rRate);
             const remainingAmount = totalAmount - spentAmount;
@@ -1091,11 +1091,11 @@ const Query = {
                 rates: {
                     nr: {
                         rate: nrRate,
-                        description: workItemData.rates?.nr?.description || 'Non-remote rate'
+                        description: spkWorkItem.rates?.nr?.description || 'Non-remote rate'
                     },
                     r: {
                         rate: rRate,
-                        description: workItemData.rates?.r?.description || 'Remote rate'
+                        description: spkWorkItem.rates?.r?.description || 'Remote rate'
                     }
                 },
                 boqVolume: {

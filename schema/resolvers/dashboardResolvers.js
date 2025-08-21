@@ -62,10 +62,9 @@ const dashboardResolvers = {
         // Get all borrow pits
         const borrowPits = await BorrowPit.find({});
         
-        // Get all daily activities for the last year
+        // Get all daily activities (ignore timeRange) -> use ALL activities
         const dailyActivities = await DailyActivity.find({
-          isActive: { $ne: false },
-          date: { $gte: oneYearAgo }
+          isActive: { $ne: false }
         });
         
         // Get all cost logs
@@ -184,7 +183,62 @@ const dashboardResolvers = {
         });
         
         // Convert to array and format - removed duplicate monthlySales definition
-        
+
+        // Build SPK -> workItemId -> rates map to use SPK-local rates for activity-based sales
+        const spkRatesMap = new Map();
+        for (const spk of spks) {
+          const wiRateMap = new Map();
+          for (const wi of spk.workItems || []) {
+            const wid = wi.workItemId ? wi.workItemId._id?.toString?.() || wi.workItemId.toString() : null;
+            if (!wid) continue;
+            const nrRate = wi.rates?.nr?.rate || 0;
+            const rRate = wi.rates?.r?.rate || 0;
+            wiRateMap.set(wid, { nrRate, rRate });
+          }
+          spkRatesMap.set(spk._id.toString(), wiRateMap);
+        }
+
+        // Map of DailyActivity by id for quick lookup of date and spkId
+        const daMap = new Map(dailyActivities.map(da => [da._id.toString(), da]));
+
+        // Load all activity details for ALL activities (ignore timeRange)
+        const allActivityDetails = await ActivityDetail.find({
+          dailyActivityId: { $in: dailyActivities.map(da => da._id) }
+        }).populate('workItemId');
+
+        // Aggregate sales by activity month-year using SPK-local rates
+        const activityMonthlySales = {};
+        for (const detail of allActivityDetails) {
+          const daId = detail.dailyActivityId?.toString();
+          const da = daMap.get(daId);
+          if (!da) continue;
+          const spkIdStr = da.spkId?.toString();
+          if (!spkIdStr) continue;
+
+          const workItemIdStr = detail.workItemId?._id?.toString?.() || detail.workItemId?.toString();
+          if (!workItemIdStr) continue;
+
+          const year = da.date.getFullYear();
+          const month = da.date.getMonth() + 1;
+          const key = `${year}-${month}`;
+
+          // Get SPK-local rates
+          const wiRateMap = spkRatesMap.get(spkIdStr);
+          const rates = wiRateMap ? wiRateMap.get(workItemIdStr) : undefined;
+          const nrRate = rates?.nrRate || 0;
+          const rRate = rates?.rRate || 0;
+
+          const nrQty = detail.actualQuantity?.nr || 0;
+          const rQty = detail.actualQuantity?.r || 0;
+          const amount = (nrQty * nrRate) + (rQty * rRate);
+
+          if (!activityMonthlySales[key]) {
+            activityMonthlySales[key] = { year, month, sales: 0, count: 0 };
+          }
+          activityMonthlySales[key].sales += amount;
+          activityMonthlySales[key].count += 1;
+        }
+
         // Monthly capaian untuk semua SPK (berdasarkan DailyActivity)
         const monthlyCapaian = await DailyActivity.aggregate([
           {
@@ -610,20 +664,22 @@ const dashboardResolvers = {
         ]);
         
         // Calculate total sales and costs from monthly data
-        const totalSales = Object.values(monthlyData).reduce((total, item) => total + item.sales, 0);
+        const totalSales = Object.values(activityMonthlySales).reduce((total, item) => total + item.sales, 0);
         const totalCosts = Object.values(monthlyData).reduce((total, item) => total + item.cost, 0);
         
         // We'll use the costBreakdown object that's already defined below
         
-        // Format monthly sales for schema (berdasarkan total itemwork cost per bulan)
-        const monthlySales = Object.values(monthlyData).map(item => ({
-          year: item.year,
-          month: item.month,
-          monthName: getMonthName(item.month),
-          amount: item.sales, // Total itemwork cost (workItems amount) per bulan
-          totalSales: item.sales,
-          count: item.spkCount || 0
-        }));
+        // Format monthly sales for schema from activities (sum of executed quantities * SPK-local rates)
+        const monthlySales = Object.values(activityMonthlySales)
+          .sort((a, b) => (a.year - b.year) || (a.month - b.month))
+          .map(item => ({
+            year: item.year,
+            month: item.month,
+            monthName: getMonthName(item.month),
+            amount: item.sales,
+            totalSales: item.sales,
+            count: item.count || 0
+          }));
         
         // Format monthly costs for schema
         const monthlyCosts = Object.values(monthlyData).map(item => ({
