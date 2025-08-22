@@ -86,6 +86,27 @@ const dashboardResolvers = {
         
         // Group data by month
         const monthlyData = {};
+        // Ensure a monthly entry exists for given year-month
+        function ensureMonthlyEntry(year, month) {
+          const key = `${year}-${month}`;
+          if (!monthlyData[key]) {
+            monthlyData[key] = {
+              year,
+              month,
+              sales: 0,
+              cost: 0,
+              costBreakdown: {
+                material: 0,
+                manpower: 0,
+                equipment: 0,
+                other: 0
+              },
+              spkCount: 0,
+              spkIds: []
+            };
+          }
+          return key;
+        }
         
         // Process SPKs (Sales calculation based on workItems amount)
         spks.forEach(spk => {
@@ -127,13 +148,11 @@ const dashboardResolvers = {
           
           const year = dailyActivity.date.getFullYear();
           const month = dailyActivity.date.getMonth() + 1;
-          const key = `${year}-${month}`;
+          const key = ensureMonthlyEntry(year, month);
           
-          if (monthlyData[key]) {
-            const cost = (log.quantity || 0) * (log.unitRate || log.materialId?.unitRate || 0);
-            monthlyData[key].cost += cost;
-            monthlyData[key].costBreakdown.material += cost;
-          }
+          const cost = (log.quantity || 0) * (log.unitRate || log.materialId?.unitRate || 0);
+          monthlyData[key].cost += cost;
+          monthlyData[key].costBreakdown.material += cost;
         });
         
         manpowerLogs.forEach(log => {
@@ -142,13 +161,11 @@ const dashboardResolvers = {
           
           const year = dailyActivity.date.getFullYear();
           const month = dailyActivity.date.getMonth() + 1;
-          const key = `${year}-${month}`;
+          const key = ensureMonthlyEntry(year, month);
           
-          if (monthlyData[key]) {
-            const cost = (log.personCount || 0) * (log.workingHours || 0) * (log.hourlyRate || 0);
-            monthlyData[key].cost += cost;
-            monthlyData[key].costBreakdown.manpower += cost;
-          }
+          const cost = (log.personCount || 0) * (log.workingHours || 0) * (log.hourlyRate || 0);
+          monthlyData[key].cost += cost;
+          monthlyData[key].costBreakdown.manpower += cost;
         });
         
         equipmentLogs.forEach(log => {
@@ -157,15 +174,13 @@ const dashboardResolvers = {
           
           const year = dailyActivity.date.getFullYear();
           const month = dailyActivity.date.getMonth() + 1;
-          const key = `${year}-${month}`;
+          const key = ensureMonthlyEntry(year, month);
           
-          if (monthlyData[key]) {
-            const fuelCost = (log.fuelIn || 0) * (log.fuelPrice || 0);
-            const rentalCost = (log.workingHour || 0) * (log.hourlyRate || 0);
-            const cost = fuelCost + rentalCost;
-            monthlyData[key].cost += cost;
-            monthlyData[key].costBreakdown.equipment += cost;
-          }
+          const fuelCost = (log.fuelIn || 0) * (log.fuelPrice || 0);
+          const rentalCost = (log.workingHour || 0) * (log.hourlyRate || 0);
+          const cost = fuelCost + rentalCost;
+          monthlyData[key].cost += cost;
+          monthlyData[key].costBreakdown.equipment += cost;
         });
         
         otherCosts.forEach(cost => {
@@ -174,12 +189,10 @@ const dashboardResolvers = {
           
           const year = dailyActivity.date.getFullYear();
           const month = dailyActivity.date.getMonth() + 1;
-          const key = `${year}-${month}`;
+          const key = ensureMonthlyEntry(year, month);
           
-          if (monthlyData[key]) {
-            monthlyData[key].cost += cost.amount || 0;
-            monthlyData[key].costBreakdown.other += cost.amount || 0;
-          }
+          monthlyData[key].cost += cost.amount || 0;
+          monthlyData[key].costBreakdown.other += cost.amount || 0;
         });
         
         // Convert to array and format - removed duplicate monthlySales definition
