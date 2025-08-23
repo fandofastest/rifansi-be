@@ -9,6 +9,8 @@ const ManpowerLog = require('../../models/ManpowerLog');
 const EquipmentLog = require('../../models/EquipmentLog');
 const OtherCost = require('../../models/OtherCost');
 const BorrowPit = require('../../models/BorrowPit');
+const Equipment = require('../../models/Equipment');
+const FuelPrice = require('../../models/FuelPrice');
 
 const dashboardResolvers = {
   Query: {
@@ -79,7 +81,34 @@ const dashboardResolvers = {
         const equipmentLogs = await EquipmentLog.find({
           dailyActivityId: { $in: dailyActivities.map(da => da._id) }
         });
-        
+
+        // Preload equipment fuel types and latest fuel prices per type for fuel price fallback
+        const equipmentIds = [...new Set(equipmentLogs
+          .map(l => l.equipmentId ? l.equipmentId.toString() : null)
+          .filter(Boolean))];
+        const equipments = equipmentIds.length > 0
+          ? await Equipment.find({ _id: { $in: equipmentIds } })
+          : [];
+        const equipmentFuelTypeById = new Map(
+          (equipments || []).map(e => [e._id.toString(), e.fuelType || null])
+        );
+        const fuelTypes = [...new Set([...equipmentFuelTypeById.values()].filter(Boolean))];
+        const latestFuelPriceByType = {};
+        for (const ft of fuelTypes) {
+          const latest = await FuelPrice.findOne({
+            fuelType: ft,
+            effectiveDate: { $lte: new Date() }
+          }).sort({ effectiveDate: -1 });
+          latestFuelPriceByType[ft] = latest ? (latest.pricePerLiter || 0) : 0;
+        }
+        function getEffectiveFuelPrice(log) {
+          const explicit = (log.fuelPrice || 0);
+          if (explicit > 0) return explicit;
+          const eqId = log.equipmentId ? log.equipmentId.toString() : null;
+          const ft = eqId ? equipmentFuelTypeById.get(eqId) : null;
+          return ft ? (latestFuelPriceByType[ft] || 0) : 0;
+        }
+
         const otherCosts = await OtherCost.find({
           dailyActivityId: { $in: dailyActivities.map(da => da._id) }
         });
@@ -176,8 +205,15 @@ const dashboardResolvers = {
           const month = dailyActivity.date.getMonth() + 1;
           const key = ensureMonthlyEntry(year, month);
           
-          const fuelCost = (log.fuelIn || 0) * (log.fuelPrice || 0);
-          const rentalCost = (log.workingHour || 0) * (log.hourlyRate || 0);
+          // Fuel cost uses fuelIn * effective fuel price
+          const fuelCost = (log.fuelIn || 0) * getEffectiveFuelPrice(log);
+          // Rental uses rentalRatePerDay only (no hourly fallback)
+          let rentalCost = 0;
+          if (log.rentalRatePerDay && log.rentalRatePerDay > 0) {
+            const workingHour = (log.workingHour || log.workingHours || 0);
+            const days = workingHour >= 8 ? 1 : workingHour / 8;
+            rentalCost = days * log.rentalRatePerDay;
+          }
           const cost = fuelCost + rentalCost;
           monthlyData[key].cost += cost;
           monthlyData[key].costBreakdown.equipment += cost;
@@ -460,15 +496,14 @@ const dashboardResolvers = {
             total + ((log.personCount || 0) * (log.workingHours || 0) * (log.hourlyRate || 0)), 0);
 
           const spkEquipmentCost = spkEquipmentLogs.reduce((total, log) => {
-            const fuelCost = (log.fuelIn || 0) * (log.fuelPrice || 0);
+            // Fuel cost uses fuelIn * effective fuel price (align with requirement)
+            const fuelCost = (log.fuelIn || 0) * getEffectiveFuelPrice(log);
             // Menggunakan rentalRatePerDay, dengan perhitungan yang sama seperti di atas
             let rentalCost = 0;
             if (log.rentalRatePerDay && log.rentalRatePerDay > 0) {
               const workingHour = (log.workingHour || log.workingHours || 0);
               const days = workingHour >= 8 ? 1 : workingHour / 8;
               rentalCost = days * log.rentalRatePerDay;
-            } else {
-              rentalCost = (log.workingHour || log.workingHours || 0) * (log.hourlyRate || 0);
             }
             return total + fuelCost + rentalCost;
           }, 0);
@@ -551,7 +586,7 @@ const dashboardResolvers = {
 
         // Split equipment costs into fuel and rental
         const totalEquipmentFuelCost = equipmentLogs.reduce((total, log) => 
-          total + ((log.fuelIn || 0) * (log.fuelPrice || 0)), 0);
+          total + ((log.fuelIn || 0) * getEffectiveFuelPrice(log)), 0);
         // Menggunakan rentalRatePerDay, jika workingHour >= 8 jam berarti satu hari penuh
         const totalEquipmentRentalCost = equipmentLogs.reduce((total, log) => {
           // Jika ada rentalRatePerDay, gunakan itu
@@ -560,10 +595,8 @@ const dashboardResolvers = {
             const workingHour = (log.workingHour || log.workingHours || 0);
             const days = workingHour >= 8 ? 1 : workingHour / 8; // 8 jam = 1 hari kerja
             return total + (days * log.rentalRatePerDay);
-          } else {
-            // Fallback ke hourlyRate jika rentalRatePerDay tidak ada
-            return total + ((log.workingHour || log.workingHours || 0) * (log.hourlyRate || 0));
           }
+          return total;
         }, 0);
         const totalEquipmentCost = totalEquipmentFuelCost + totalEquipmentRentalCost;
 

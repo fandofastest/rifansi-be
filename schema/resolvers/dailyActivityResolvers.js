@@ -308,9 +308,8 @@ const Query = {
             };
         }
     },
-
     // Consolidated function to get daily activities with details
-    getDailyActivityWithDetails: async (_, { areaId, userId, activityId, startDate, endDate }, { user }) => {
+    getDailyActivityWithDetails: async (_, { areaId, userId, activityId, spkId, startDate, endDate }, { user }) => {
         if (!user) throw new Error('Not authenticated');
 
         try {
@@ -319,6 +318,7 @@ const Query = {
             if (activityId) query._id = activityId;
             if (areaId) query.areaId = areaId;
             if (userId) query.createdBy = userId;
+            if (spkId) query.spkId = spkId;
             if (startDate || endDate) {
                 query.date = {};
                 if (startDate) query.date.$gte = new Date(startDate);

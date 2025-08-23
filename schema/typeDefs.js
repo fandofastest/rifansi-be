@@ -545,6 +545,7 @@ const typeDefs = gql`
       areaId: ID
       userId: ID
       activityId: ID
+      spkId: ID
       startDate: String
       endDate: String
     ): [LaporanByAreaDetails!]!
