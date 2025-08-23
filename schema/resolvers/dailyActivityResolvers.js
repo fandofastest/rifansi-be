@@ -403,7 +403,60 @@ const Query = {
                         progressPercentage = Math.round(progressPercentage * 100) / 100;
                     }
 
-                    const budgetUsage = calculateBudgetUsagePercentage(activityDetails, da.spkId);
+                    // Calculate budget usage based on total daily costs instead of item work
+                    let equipmentTotal = 0;
+                    const fallbackFuelPrice = latestFuelPrice ? (latestFuelPrice.pricePerLiter || 0) : 0;
+                    if (Array.isArray(equipmentLogs)) {
+                        equipmentTotal = equipmentLogs.reduce((sum, log) => {
+                            const effectiveFuelPrice = (log.fuelPrice && log.fuelPrice > 0) ? log.fuelPrice : fallbackFuelPrice;
+                            const fuelCost = (log.fuelIn || 0) * effectiveFuelPrice;
+                            let rentalCost = 0;
+                            if (log.rentalRatePerDay && log.rentalRatePerDay > 0) {
+                                const workingHour = (log.workingHour || log.workingHours || 0);
+                                const days = workingHour >= 8 ? 1 : (workingHour / 8);
+                                rentalCost = days * log.rentalRatePerDay;
+                            } else if (log.hourlyRate && log.workingHour) {
+                                // Fallback if daily rate not provided
+                                rentalCost = (log.hourlyRate || 0) * (log.workingHour || 0);
+                            }
+                            return sum + fuelCost + rentalCost;
+                        }, 0);
+                    }
+
+                    let manpowerTotal = 0;
+                    if (Array.isArray(manpowerLogs)) {
+                        manpowerTotal = manpowerLogs.reduce((sum, ml) => {
+                            const cost = (ml.personCount || 0) * (ml.hourlyRate || 0) * (ml.workingHours || 0);
+                            return sum + (isNaN(cost) ? 0 : cost);
+                        }, 0);
+                    }
+
+                    let materialTotal = 0;
+                    if (Array.isArray(materialUsageLogs)) {
+                        materialTotal = materialUsageLogs.reduce((sum, mu) => {
+                            const cost = (mu.quantity || 0) * (mu.unitRate || 0);
+                            return sum + (isNaN(cost) ? 0 : cost);
+                        }, 0);
+                    }
+
+                    let otherTotal = 0;
+                    if (Array.isArray(otherCosts)) {
+                        otherTotal = otherCosts.reduce((sum, oc) => sum + (oc.amount || 0), 0);
+                    }
+
+                    const totalDailyCost = equipmentTotal + manpowerTotal + materialTotal + otherTotal;
+
+                    // Daily budget target from SPK budget divided by inclusive workdays
+                    let dailyTarget = 0;
+                    if (da.spkId && (da.spkId.startDate && da.spkId.endDate)) {
+                        const s = new Date(da.spkId.startDate);
+                        const e = new Date(da.spkId.endDate);
+                        const totalDays = Math.max(1, Math.ceil((e - s) / (1000 * 60 * 60 * 24)) + 1);
+                        const totalBudget = da.spkId.budget || 0;
+                        dailyTarget = totalBudget / totalDays;
+                    }
+
+                    const budgetUsage = dailyTarget > 0 ? (totalDailyCost / dailyTarget) * 100 : 0;
 
                     return {
                         id: da._id,
