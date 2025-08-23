@@ -461,7 +461,15 @@ const dashboardResolvers = {
 
           const spkEquipmentCost = spkEquipmentLogs.reduce((total, log) => {
             const fuelCost = (log.fuelIn || 0) * (log.fuelPrice || 0);
-            const rentalCost = (log.workingHour || 0) * (log.hourlyRate || 0);
+            // Menggunakan rentalRatePerDay, dengan perhitungan yang sama seperti di atas
+            let rentalCost = 0;
+            if (log.rentalRatePerDay && log.rentalRatePerDay > 0) {
+              const workingHour = (log.workingHour || log.workingHours || 0);
+              const days = workingHour >= 8 ? 1 : workingHour / 8;
+              rentalCost = days * log.rentalRatePerDay;
+            } else {
+              rentalCost = (log.workingHour || log.workingHours || 0) * (log.hourlyRate || 0);
+            }
             return total + fuelCost + rentalCost;
           }, 0);
 
@@ -541,13 +549,34 @@ const dashboardResolvers = {
         const totalManpowerCost = manpowerLogs.reduce((total, log) => 
           total + ((log.personCount || 0) * (log.workingHours || 0) * (log.hourlyRate || 0)), 0);
 
-        const totalEquipmentCost = equipmentLogs.reduce((total, log) => {
-          const fuelCost = (log.fuelIn || 0) * (log.fuelPrice || 0);
-          const rentalCost = (log.workingHour || 0) * (log.hourlyRate || 0);
-          return total + fuelCost + rentalCost;
+        // Split equipment costs into fuel and rental
+        const totalEquipmentFuelCost = equipmentLogs.reduce((total, log) => 
+          total + ((log.fuelIn || 0) * (log.fuelPrice || 0)), 0);
+        // Menggunakan rentalRatePerDay, jika workingHour >= 8 jam berarti satu hari penuh
+        const totalEquipmentRentalCost = equipmentLogs.reduce((total, log) => {
+          // Jika ada rentalRatePerDay, gunakan itu
+          if (log.rentalRatePerDay && log.rentalRatePerDay > 0) {
+            // Hitung berapa hari kerja berdasarkan workingHour
+            const workingHour = (log.workingHour || log.workingHours || 0);
+            const days = workingHour >= 8 ? 1 : workingHour / 8; // 8 jam = 1 hari kerja
+            return total + (days * log.rentalRatePerDay);
+          } else {
+            // Fallback ke hourlyRate jika rentalRatePerDay tidak ada
+            return total + ((log.workingHour || log.workingHours || 0) * (log.hourlyRate || 0));
+          }
         }, 0);
+        const totalEquipmentCost = totalEquipmentFuelCost + totalEquipmentRentalCost;
 
+        // Other costs: total and breakdown by costType
         const totalOtherCost = otherCosts.reduce((total, cost) => total + (cost.amount || 0), 0);
+        const otherBreakdownMap = {};
+        otherCosts.forEach(c => {
+          const key = c.costType || 'UNKNOWN';
+          if (!otherBreakdownMap[key]) otherBreakdownMap[key] = { total: 0, count: 0 };
+          otherBreakdownMap[key].total += (c.amount || 0);
+          otherBreakdownMap[key].count += 1;
+        });
+        const otherBreakdown = Object.entries(otherBreakdownMap).map(([costType, v]) => ({ costType, total: v.total, count: v.count }));
 
         const costBreakdown = {
           material: totalMaterialCost,
@@ -565,7 +594,11 @@ const dashboardResolvers = {
           totalCost: totalMaterialCost + totalManpowerCost + totalEquipmentCost + totalOtherCost,
           totalMaterialCost: totalMaterialCost,
           totalManpowerCost: totalManpowerCost,
-          totalEquipmentCost: totalEquipmentCost
+          totalEquipmentCost: totalEquipmentCost,
+          // Added detailed equipment and other cost breakdowns
+          equipmentFuelCost: totalEquipmentFuelCost,
+          equipmentRentalCost: totalEquipmentRentalCost,
+          otherBreakdown: otherBreakdown
         };
 
         // Chart data - Monthly Trend (Sales trend)

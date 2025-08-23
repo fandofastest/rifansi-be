@@ -2209,6 +2209,16 @@ const typeDefs = gql`
     totalMaterialCost: Float!
     totalManpowerCost: Float!
     totalEquipmentCost: Float!
+    # Added detailed equipment and other costs for dashboard
+    equipmentFuelCost: Float!
+    equipmentRentalCost: Float!
+    otherBreakdown: [OtherCostGroup!]!
+  }
+
+  type OtherCostGroup {
+    costType: String!
+    total: Float!
+    count: Int!
   }
 
   # Chart Types
@@ -2244,14 +2254,6 @@ const typeDefs = gql`
     totalProgress: SPKTotalProgress
   }
 
-  type CostBreakdownTotal {
-    material: Float!
-    manpower: Float!
-    equipment: Float!
-    other: Float!
-    total: Float
-  }
-  
   type TotalSpkContract {
     percentage: Float!
     totalBudgetSpk: Float!
