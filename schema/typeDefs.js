@@ -1635,6 +1635,9 @@ const typeDefs = gql`
     totalBudget: Float!
     totalSpent: Float!
     remainingBudget: Float!
+    totalSales: Float!
+    # Detailed daily sales breakdown
+    totalSalesDetails: [TotalSalesDetail!]!
     # Enhanced progress details
     workItemCompletionPercentage: Float!
     completedWorkItems: Int!
@@ -1679,6 +1682,13 @@ const typeDefs = gql`
     description: String
     cost: Float!
     date: String!
+  }
+
+  # Sales detail per daily activity for financial auditing
+  type TotalSalesDetail {
+    dailyActivityId: ID!
+    date: String!
+    totalSales: Float!
   }
 
   type CostCategory {

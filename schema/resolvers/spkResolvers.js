@@ -870,6 +870,78 @@ const Query = {
 
         console.log(`[BOQ Debug] BOQ Progress Percentage: ${boqProgressPercentage}%`);
 
+        // Calculate total sales = sum of (actualQuantity.nr * nrRate + actualQuantity.r * rRate)
+        // Prefer rates stored on ActivityDetail (historical integrity). Fallback to SPK's workItems rates.
+        const ratesByWorkItemId = new Map(
+            spk.workItems.map(item => [
+                String(item.workItemId?._id || item.workItemId),
+                {
+                    nr: item.rates?.nr?.rate ?? 0,
+                    r: item.rates?.r?.rate ?? 0
+                }
+            ])
+        );
+
+        const totalSales = (activityDetails || []).reduce((sum, detail) => {
+            const qtyNr = detail.actualQuantity?.nr || 0;
+            const qtyR = detail.actualQuantity?.r || 0;
+            const detailNrRate = detail.rates?.nr?.rate;
+            const detailRRate = detail.rates?.r?.rate;
+            const hasDetailRates = (typeof detailNrRate === 'number' && typeof detailRRate === 'number') &&
+                ((detailNrRate ?? 0) > 0 || (detailRRate ?? 0) > 0);
+
+            let nrRate = 0;
+            let rRate = 0;
+
+            if (hasDetailRates) {
+                nrRate = detailNrRate || 0;
+                rRate = detailRRate || 0;
+            } else {
+                const workItemId = String(detail.workItemId?._id || detail.workItemId || '');
+                const fallback = ratesByWorkItemId.get(workItemId) || { nr: 0, r: 0 };
+                nrRate = fallback.nr;
+                rRate = fallback.r;
+            }
+
+            return sum + (qtyNr * nrRate) + (qtyR * rRate);
+        }, 0);
+
+        // Build per-day total sales details from ActivityDetails
+        const activityDateById = new Map(
+            (dailyActivities || []).map(da => [String(da._id), da.date ? da.date.toISOString() : null])
+        );
+        const salesByDaily = new Map();
+        (activityDetails || []).forEach(detail => {
+            const daId = String(detail.dailyActivityId || '');
+            if (!daId) return;
+            const qtyNr = detail.actualQuantity?.nr || 0;
+            const qtyR = detail.actualQuantity?.r || 0;
+            const detailNrRate = detail.rates?.nr?.rate;
+            const detailRRate = detail.rates?.r?.rate;
+            const hasDetailRates = (typeof detailNrRate === 'number' && typeof detailRRate === 'number') &&
+                ((detailNrRate ?? 0) > 0 || (detailRRate ?? 0) > 0);
+            let nrRate = 0;
+            let rRate = 0;
+            if (hasDetailRates) {
+                nrRate = detailNrRate || 0;
+                rRate = detailRRate || 0;
+            } else {
+                const workItemId = String(detail.workItemId?._id || detail.workItemId || '');
+                const fb = ratesByWorkItemId.get(workItemId) || { nr: 0, r: 0 };
+                nrRate = fb.nr;
+                rRate = fb.r;
+            }
+            const lineTotal = (qtyNr * nrRate) + (qtyR * rRate);
+            salesByDaily.set(daId, (salesByDaily.get(daId) || 0) + lineTotal);
+        });
+        const totalSalesDetails = Array.from(salesByDaily.entries())
+            .map(([dailyActivityId, amount]) => ({
+                dailyActivityId,
+                date: activityDateById.get(dailyActivityId) || null,
+                totalSales: amount
+            }))
+            .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
         const spkObj = spk.toObject();
         return {
             id: spkObj._id.toString(),
@@ -896,7 +968,9 @@ const Query = {
                 // Keep financial data for reference
                 totalBudget: spkObj.budget || 0,
                 totalSpent: totalCosts,
-                remainingBudget: (spkObj.budget || 0) - totalCosts
+                remainingBudget: (spkObj.budget || 0) - totalCosts,
+                totalSales: totalSales,
+                totalSalesDetails: totalSalesDetails
             },
             createdAt: spkObj.createdAt.toISOString(),
             updatedAt: spkObj.updatedAt.toISOString()
@@ -1021,6 +1095,38 @@ const Query = {
         const totalOtherCost = otherCosts.reduce((total, cost) => total + (cost.amount || 0), 0);
 
         const totalActualCost = totalMaterialCost + totalManpowerCost + totalEquipmentCost + totalOtherCost;
+
+        // Calculate total sales across all activities using ActivityDetail's stored rates (primary)
+        const totalSales = (activityDetails || []).reduce((sum, detail) => {
+            const qtyNr = detail.actualQuantity?.nr || 0;
+            const qtyR = detail.actualQuantity?.r || 0;
+            const nrRate = detail.rates?.nr?.rate ?? 0;
+            const rRate = detail.rates?.r?.rate ?? 0;
+            return sum + (qtyNr * nrRate) + (qtyR * rRate);
+        }, 0);
+
+        // Build per-day total sales details from ActivityDetails for summary
+        const activityDateById2 = new Map(
+            (dailyActivities || []).map(da => [String(da._id), da.date ? da.date.toISOString() : null])
+        );
+        const salesByDaily2 = new Map();
+        (activityDetails || []).forEach(detail => {
+            const daId = String(detail.dailyActivityId || '');
+            if (!daId) return;
+            const qtyNr = detail.actualQuantity?.nr || 0;
+            const qtyR = detail.actualQuantity?.r || 0;
+            const nrRate = detail.rates?.nr?.rate ?? 0;
+            const rRate = detail.rates?.r?.rate ?? 0;
+            const lineTotal = (qtyNr * nrRate) + (qtyR * rRate);
+            salesByDaily2.set(daId, (salesByDaily2.get(daId) || 0) + lineTotal);
+        });
+        const totalSalesDetails2 = Array.from(salesByDaily2.entries())
+            .map(([dailyActivityId, amount]) => ({
+                dailyActivityId,
+                date: activityDateById2.get(dailyActivityId) || null,
+                totalSales: amount
+            }))
+            .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
         // Calculate SPK duration in days
         let spkDurationDays = 1; // Default to 1 day if no dates provided
@@ -1203,16 +1309,6 @@ const Query = {
             totalProgress: {
                 percentage: Math.round(overallProgressPercentage * 100) / 100,
                 totalTargetBOQ: totalTargetBOQ,
-                totalCompletedBOQ: totalCompletedBOQ,
-                remainingBOQ: remainingBOQ,
-                totalBudget: totalBudget,
-                totalSpent: totalActualCost,
-                remainingBudget: remainingBudget,
-                // Enhanced progress details
-                workItemCompletionPercentage: Math.round(workItemCompletionPercentage * 100) / 100,
-                completedWorkItems: completedWorkItems,
-                totalWorkItems: totalWorkItems,
-                budgetUtilizationPercentage: Math.round(budgetUtilizationPercentage * 100) / 100,
                 plannedVsActualCostRatio: Math.round(plannedVsActualRatio * 100) / 100,
                 totalPlannedCost: totalPlannedCost,
                 isOverBudget: totalActualCost > totalBudget,
