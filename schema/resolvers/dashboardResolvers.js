@@ -61,6 +61,12 @@ const dashboardResolvers = {
           ]
         });
         
+        // Map SPK meta for quick lookup when building breakdowns
+        const spkMetaById = new Map();
+        for (const spk of spks) {
+          spkMetaById.set(spk._id.toString(), { spkNo: spk.spkNo, title: spk.title });
+        }
+
         // Get all borrow pits
         const borrowPits = await BorrowPit.find({});
         
@@ -139,6 +145,8 @@ const dashboardResolvers = {
         
         // Process SPKs (Sales calculation based on workItems amount)
         spks.forEach(spk => {
+          // Skip if SPK doesn't have spkNo (cacad)
+          if (!spk.spkNo) return;
           const year = spk.date.getFullYear();
           const month = spk.date.getMonth() + 1;
           const key = `${year}-${month}`;
@@ -174,6 +182,10 @@ const dashboardResolvers = {
         materialLogs.forEach(log => {
           const dailyActivity = dailyActivities.find(da => da._id.toString() === log.dailyActivityId.toString());
           if (!dailyActivity) return;
+          // Skip if SPK doesn't have spkNo (cacad)
+          const spkIdStr = dailyActivity.spkId ? dailyActivity.spkId.toString() : null;
+          const spkMeta = spkIdStr ? spkMetaById.get(spkIdStr) : null;
+          if (!spkMeta || !spkMeta.spkNo) return;
           
           const year = dailyActivity.date.getFullYear();
           const month = dailyActivity.date.getMonth() + 1;
@@ -187,6 +199,10 @@ const dashboardResolvers = {
         manpowerLogs.forEach(log => {
           const dailyActivity = dailyActivities.find(da => da._id.toString() === log.dailyActivityId.toString());
           if (!dailyActivity) return;
+          // Skip if SPK doesn't have spkNo (cacad)
+          const spkIdStr = dailyActivity.spkId ? dailyActivity.spkId.toString() : null;
+          const spkMeta = spkIdStr ? spkMetaById.get(spkIdStr) : null;
+          if (!spkMeta || !spkMeta.spkNo) return;
           
           const year = dailyActivity.date.getFullYear();
           const month = dailyActivity.date.getMonth() + 1;
@@ -200,6 +216,10 @@ const dashboardResolvers = {
         equipmentLogs.forEach(log => {
           const dailyActivity = dailyActivities.find(da => da._id.toString() === log.dailyActivityId.toString());
           if (!dailyActivity) return;
+          // Skip if SPK doesn't have spkNo (cacad)
+          const spkIdStr = dailyActivity.spkId ? dailyActivity.spkId.toString() : null;
+          const spkMeta = spkIdStr ? spkMetaById.get(spkIdStr) : null;
+          if (!spkMeta || !spkMeta.spkNo) return;
           
           const year = dailyActivity.date.getFullYear();
           const month = dailyActivity.date.getMonth() + 1;
@@ -222,6 +242,10 @@ const dashboardResolvers = {
         otherCosts.forEach(cost => {
           const dailyActivity = dailyActivities.find(da => da._id.toString() === cost.dailyActivityId.toString());
           if (!dailyActivity) return;
+          // Skip if SPK doesn't have spkNo (cacad)
+          const spkIdStr = dailyActivity.spkId ? dailyActivity.spkId.toString() : null;
+          const spkMeta = spkIdStr ? spkMetaById.get(spkIdStr) : null;
+          if (!spkMeta || !spkMeta.spkNo) return;
           
           const year = dailyActivity.date.getFullYear();
           const month = dailyActivity.date.getMonth() + 1;
@@ -257,12 +281,19 @@ const dashboardResolvers = {
 
         // Aggregate sales by activity month-year using SPK-local rates
         const activityMonthlySales = {};
+        // Also keep per-SPK breakdown per month
+        const activityMonthlySalesBySpk = {};
+        // And keep per-activity-detail breakdown per month
+        const activityMonthlyDetails = {};
         for (const detail of allActivityDetails) {
           const daId = detail.dailyActivityId?.toString();
           const da = daMap.get(daId);
           if (!da) continue;
           const spkIdStr = da.spkId?.toString();
           if (!spkIdStr) continue;
+          // Skip if SPK doesn't have spkNo (cacad)
+          const meta = spkMetaById.get(spkIdStr);
+          if (!meta || !meta.spkNo) continue;
 
           const workItemIdStr = detail.workItemId?._id?.toString?.() || detail.workItemId?.toString();
           if (!workItemIdStr) continue;
@@ -286,6 +317,28 @@ const dashboardResolvers = {
           }
           activityMonthlySales[key].sales += amount;
           activityMonthlySales[key].count += 1;
+
+          // Breakdown per SPK
+          if (!activityMonthlySalesBySpk[key]) activityMonthlySalesBySpk[key] = {};
+          if (!activityMonthlySalesBySpk[key][spkIdStr]) activityMonthlySalesBySpk[key][spkIdStr] = 0;
+          activityMonthlySalesBySpk[key][spkIdStr] += amount;
+
+          // Breakdown per Activity Detail
+          if (!activityMonthlyDetails[key]) activityMonthlyDetails[key] = [];
+          activityMonthlyDetails[key].push({
+            dailyActivityId: daId,
+            date: da.date,
+            spkId: spkIdStr,
+            spkNo: spkMetaById.get(spkIdStr)?.spkNo || null,
+            title: spkMetaById.get(spkIdStr)?.title || null,
+            workItemId: workItemIdStr,
+            workItemName: detail.workItemId?.name || null,
+            nrQty,
+            rQty,
+            nrRate,
+            rRate,
+            amount
+          });
         }
 
         // Monthly capaian untuk semua SPK (berdasarkan DailyActivity)
@@ -489,24 +542,30 @@ const dashboardResolvers = {
             log.dailyActivityId && spkActivitiesIds.includes(log.dailyActivityId.toString()));
 
           // Calculate cost breakdown
-          const spkMaterialCost = spkMaterialLogs.reduce((total, log) => 
-            total + ((log.quantity || 0) * (log.unitRate || log.materialId?.unitRate || 0)), 0);
+          const spkMaterialCost = spk.spkNo
+            ? spkMaterialLogs.reduce((total, log) => 
+                total + ((log.quantity || 0) * (log.unitRate || log.materialId?.unitRate || 0)), 0)
+            : 0;
 
-          const spkManpowerCost = spkManpowerLogs.reduce((total, log) => 
-            total + ((log.personCount || 0) * (log.workingHours || 0) * (log.hourlyRate || 0)), 0);
+          const spkManpowerCost = spk.spkNo
+            ? spkManpowerLogs.reduce((total, log) => 
+                total + ((log.personCount || 0) * (log.workingHours || 0) * (log.hourlyRate || 0)), 0)
+            : 0;
 
-          const spkEquipmentCost = spkEquipmentLogs.reduce((total, log) => {
-            // Fuel cost uses fuelIn * effective fuel price (align with requirement)
-            const fuelCost = (log.fuelIn || 0) * getEffectiveFuelPrice(log);
-            // Menggunakan rentalRatePerDay, dengan perhitungan yang sama seperti di atas
-            let rentalCost = 0;
-            if (log.rentalRatePerDay && log.rentalRatePerDay > 0) {
-              const workingHour = (log.workingHour || log.workingHours || 0);
-              const days = workingHour >= 8 ? 1 : workingHour / 8;
-              rentalCost = days * log.rentalRatePerDay;
-            }
-            return total + fuelCost + rentalCost;
-          }, 0);
+          const spkEquipmentCost = spk.spkNo
+            ? spkEquipmentLogs.reduce((total, log) => {
+                // Fuel cost uses fuelIn * effective fuel price (align with requirement)
+                const fuelCost = (log.fuelIn || 0) * getEffectiveFuelPrice(log);
+                // Menggunakan rentalRatePerDay, dengan perhitungan yang sama seperti di atas
+                let rentalCost = 0;
+                if (log.rentalRatePerDay && log.rentalRatePerDay > 0) {
+                  const workingHour = (log.workingHour || log.workingHours || 0);
+                  const days = workingHour >= 8 ? 1 : workingHour / 8;
+                  rentalCost = days * log.rentalRatePerDay;
+                }
+                return total + fuelCost + rentalCost;
+              }, 0)
+            : 0;
 
           // Total actual cost
           const spkTotalActualCost = spkMaterialCost + spkManpowerCost + spkEquipmentCost;
@@ -536,12 +595,30 @@ const dashboardResolvers = {
           };
           
           // Calculate progress metrics menggunakan nilai progress fisik (boqProgressPercentage)
-          const workItemCompletionPercentage = boqProgressPercentage;
+          const workItemCompletionPercentage = spk.spkNo ? boqProgressPercentage : 0;
           const budgetUtilizationPercentage = spkBudget > 0 ? (spkTotalActualCost / spkBudget) * 100 : 0;
           
           // PlannedVsActualCostRatio langsung menggunakan nilai boqProgressPercentage
           // (mengabaikan perhitungan biaya sesuai permintaan)
           const plannedVsActualCostRatio = boqProgressPercentage;
+
+          // Executed sales amount: sum(actual NR * NR rate + actual R * R rate) using SPK-local rates
+          let executedSalesAmount = 0;
+          const wiRateMapForSpk = spkRatesMap.get(spkId);
+          if (spk.spkNo) {
+            for (const detail of activityDetails) {
+              const workItemIdStr = detail.workItemId?._id?.toString?.() || detail.workItemId?.toString();
+              if (!workItemIdStr) continue;
+              const rates = wiRateMapForSpk ? wiRateMapForSpk.get(workItemIdStr) : undefined;
+              const nrRate = rates?.nrRate || 0;
+              const rRate = rates?.rRate || 0;
+              const nrQty = detail.actualQuantity?.nr || 0;
+              const rQty = detail.actualQuantity?.r || 0;
+              executedSalesAmount += (nrQty * nrRate) + (rQty * rRate);
+            }
+          }
+          // New progress formula requested: executed sales / SPK budget * 100
+          const progressPercentageBySales = spk.spkNo && spkBudget > 0 ? (executedSalesAmount / spkBudget) * 100 : 0;
           
           return {
             spkId: spk._id.toString(),
@@ -560,7 +637,7 @@ const dashboardResolvers = {
             } : null,
             workItems: workItems,
             completedAmount: totalCompletedBOQ,
-            progressPercentage: boqProgressPercentage,
+            progressPercentage: progressPercentageBySales,
             activityCount: spkActivities.length,
             // New fields for enhanced financial metrics
             totalProgress: {
@@ -578,17 +655,67 @@ const dashboardResolvers = {
         }));
 
         // Chart data - Cost Breakdown (Total cost per kategori)
-        const totalMaterialCost = materialLogs.reduce((total, log) => 
+        // Build valid logs for all cost types (skip SPK without spkNo)
+        const validMaterialLogs = materialLogs.filter(log => {
+          const daId = log.dailyActivityId ? log.dailyActivityId.toString() : null;
+          const da = daId ? daMap.get(daId) : null;
+          const spkIdStr = da?.spkId ? da.spkId.toString() : null;
+          const spkMeta = spkIdStr ? spkMetaById.get(spkIdStr) : null;
+          return !!(spkMeta && spkMeta.spkNo);
+        });
+        const totalMaterialCost = validMaterialLogs.reduce((total, log) => 
           total + ((log.quantity || 0) * (log.unitRate || log.materialId?.unitRate || 0)), 0);
 
-        const totalManpowerCost = manpowerLogs.reduce((total, log) => 
+        // Filter manpower logs: abaikan SPK tanpa spkNo (cacad)
+        const validManpowerLogs = manpowerLogs.filter(log => {
+          const daId = log.dailyActivityId ? log.dailyActivityId.toString() : null;
+          const da = daId ? daMap.get(daId) : null;
+          const spkIdStr = da?.spkId ? da.spkId.toString() : null;
+          const spkMeta = spkIdStr ? spkMetaById.get(spkIdStr) : null;
+          const hasSpkNo = !!(spkMeta && spkMeta.spkNo);
+          return hasSpkNo;
+        });
+
+        const totalManpowerCost = validManpowerLogs.reduce((total, log) => 
           total + ((log.personCount || 0) * (log.workingHours || 0) * (log.hourlyRate || 0)), 0);
 
+        // Debug: Tampilkan rincian biaya manpower per log dan totalnya
+        try {
+          console.log('[ManpowerCost Breakdown]');
+          validManpowerLogs.forEach((log, idx) => {
+            const personCount = log.personCount || 0;
+            const hourlyRate = log.hourlyRate || 0;
+            const workingHours = log.workingHours || 0;
+            const lineTotal = personCount * hourlyRate * workingHours;
+            // Resolve SPK ID via DailyActivity map
+            const daId = log.dailyActivityId ? log.dailyActivityId.toString() : null;
+            const da = daId ? daMap.get(daId) : null;
+            const spkIdStr = da?.spkId ? da.spkId.toString() : null;
+            const spkNo = spkIdStr ? (spkMetaById.get(spkIdStr)?.spkNo || spkIdStr) : 'N/A';
+            console.log(`  #${idx + 1} spkNo=${spkNo} personCount=${personCount}, hourlyRate=${hourlyRate}, workingHours=${workingHours} => lineTotal=${lineTotal}`);
+          });
+          const skipped = manpowerLogs.length - validManpowerLogs.length;
+          if (skipped > 0) {
+            console.log(`[ManpowerCost Skipped] ${skipped} log(s) diabaikan karena SPK tanpa spkNo`);
+          }
+          console.log(`[ManpowerCost Total] totalManpowerCost=${totalManpowerCost}`);
+        } catch (e) {
+          // Pastikan tidak mengganggu eksekusi utama jika logging gagal
+          console.warn('ManpowerCost logging failed:', e?.message || e);
+        }
+
         // Split equipment costs into fuel and rental
-        const totalEquipmentFuelCost = equipmentLogs.reduce((total, log) => 
+        const validEquipmentLogs = equipmentLogs.filter(log => {
+          const daId = log.dailyActivityId ? log.dailyActivityId.toString() : null;
+          const da = daId ? daMap.get(daId) : null;
+          const spkIdStr = da?.spkId ? da.spkId.toString() : null;
+          const spkMeta = spkIdStr ? spkMetaById.get(spkIdStr) : null;
+          return !!(spkMeta && spkMeta.spkNo);
+        });
+        const totalEquipmentFuelCost = validEquipmentLogs.reduce((total, log) => 
           total + ((log.fuelIn || 0) * getEffectiveFuelPrice(log)), 0);
         // Menggunakan rentalRatePerDay, jika workingHour >= 8 jam berarti satu hari penuh
-        const totalEquipmentRentalCost = equipmentLogs.reduce((total, log) => {
+        const totalEquipmentRentalCost = validEquipmentLogs.reduce((total, log) => {
           // Jika ada rentalRatePerDay, gunakan itu
           if (log.rentalRatePerDay && log.rentalRatePerDay > 0) {
             // Hitung berapa hari kerja berdasarkan workingHour
@@ -601,9 +728,16 @@ const dashboardResolvers = {
         const totalEquipmentCost = totalEquipmentFuelCost + totalEquipmentRentalCost;
 
         // Other costs: total and breakdown by costType
-        const totalOtherCost = otherCosts.reduce((total, cost) => total + (cost.amount || 0), 0);
+        const validOtherCosts = otherCosts.filter(c => {
+          const daId = c.dailyActivityId ? c.dailyActivityId.toString() : null;
+          const da = daId ? daMap.get(daId) : null;
+          const spkIdStr = da?.spkId ? da.spkId.toString() : null;
+          const spkMeta = spkIdStr ? spkMetaById.get(spkIdStr) : null;
+          return !!(spkMeta && spkMeta.spkNo);
+        });
+        const totalOtherCost = validOtherCosts.reduce((total, cost) => total + (cost.amount || 0), 0);
         const otherBreakdownMap = {};
-        otherCosts.forEach(c => {
+        validOtherCosts.forEach(c => {
           const key = c.costType || 'UNKNOWN';
           if (!otherBreakdownMap[key]) otherBreakdownMap[key] = { total: 0, count: 0 };
           otherBreakdownMap[key].total += (c.amount || 0);
@@ -638,7 +772,8 @@ const dashboardResolvers = {
         const monthlyTrend = await SPK.aggregate([
           {
             $match: {
-              date: { $gte: oneYearAgo }
+              date: { $gte: oneYearAgo },
+              spkNo: { $nin: [null, ''] }
             }
           },
           {
@@ -751,14 +886,44 @@ const dashboardResolvers = {
         // Format monthly sales for schema from activities (sum of executed quantities * SPK-local rates)
         const monthlySales = Object.values(activityMonthlySales)
           .sort((a, b) => (a.year - b.year) || (a.month - b.month))
-          .map(item => ({
-            year: item.year,
-            month: item.month,
-            monthName: getMonthName(item.month),
-            amount: item.sales,
-            totalSales: item.sales,
-            count: item.count || 0
-          }));
+          .map(item => {
+            const key = `${item.year}-${item.month}`;
+            const perSpkMap = activityMonthlySalesBySpk[key] || {};
+            const perSpk = Object.entries(perSpkMap)
+              .map(([spkId, amt]) => ({
+                spkId,
+                spkNo: spkMetaById.get(spkId)?.spkNo || null,
+                title: spkMetaById.get(spkId)?.title || null,
+                amount: amt
+              }))
+              .sort((a, b) => b.amount - a.amount);
+            const activityDetails = (activityMonthlyDetails[key] || [])
+              .map(d => ({
+                dailyActivityId: d.dailyActivityId,
+                date: d.date?.toISOString?.() || (d.date ? String(d.date) : null),
+                spkId: d.spkId,
+                spkNo: d.spkNo,
+                title: d.title,
+                workItemId: d.workItemId,
+                workItemName: d.workItemName,
+                nrQty: d.nrQty,
+                rQty: d.rQty,
+                nrRate: d.nrRate,
+                rRate: d.rRate,
+                amount: d.amount
+              }))
+              .sort((a, b) => b.amount - a.amount);
+            return {
+              year: item.year,
+              month: item.month,
+              monthName: getMonthName(item.month),
+              amount: item.sales,
+              totalSales: item.sales,
+              spkCount: perSpk.length,
+              perSpk,
+              activityDetails
+            };
+          });
         
         // Format monthly costs for schema
         const monthlyCosts = Object.values(monthlyData).map(item => ({

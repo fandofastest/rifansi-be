@@ -382,24 +382,43 @@ const Query = {
                     const materialUsageLogs = materialUsageLogsByDA[daId] || [];
                     const otherCosts = otherCostsByDA[daId] || [];
 
-                    // Perhitungan progress dan budget usage tetap
+                    // Perhitungan progress harian berbasis SALES: (nominal sales hari ini) / (target harian sales)
+                    // Target harian sales = (budget SPK) / (jumlah hari kerja)
                     let progressPercentage = 0;
                     if (da.spkId && da.spkId.workItems && da.spkId.startDate && da.spkId.endDate) {
                         const startDate = new Date(da.spkId.startDate);
                         const endDate = new Date(da.spkId.endDate);
                         const totalWorkDays = Math.max(1, Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1);
-                        const totalBOQVolume = da.spkId.workItems.reduce((total, item) => {
-                            const nr = item.boqVolume?.nr || 0;
-                            const r = item.boqVolume?.r || 0;
-                            return total + nr + r;
-                        }, 0);
-                        const targetHarian = totalBOQVolume / totalWorkDays;
-                        const progressVolumeHariIni = activityDetails.reduce((total, detail) => {
-                            const nr = detail.actualQuantity?.nr || 0;
-                            const r = detail.actualQuantity?.r || 0;
-                            return total + nr + r;
-                        }, 0);
-                        progressPercentage = targetHarian > 0 ? (progressVolumeHariIni / targetHarian) * 100 : 0;
+
+                        // Build SPK-local rates map: workItemId -> { nrRate, rRate }
+                        const spkWiRateMap = new Map();
+                        for (const wi of (da.spkId.workItems || [])) {
+                            const wid = wi.workItemId && (wi.workItemId._id || wi.workItemId);
+                            if (!wid) continue;
+                            const key = wid.toString();
+                            const nrRate = wi.rates?.nr?.rate || 0;
+                            const rRate = wi.rates?.r?.rate || 0;
+                            spkWiRateMap.set(key, { nrRate, rRate });
+                        }
+
+                        // Hitung nominal sales eksekusi untuk AKTIVITAS INI (hari ini)
+                        let executedSalesToday = 0;
+                        for (const detail of activityDetails) {
+                            const workItemIdStr = detail.workItemId?._id?.toString?.() || detail.workItemId?.toString?.();
+                            if (!workItemIdStr) continue;
+                            const ratesFromSpk = spkWiRateMap.get(workItemIdStr);
+                            const nrRate = (ratesFromSpk?.nrRate) ?? (detail.rates?.nr?.rate || 0);
+                            const rRate = (ratesFromSpk?.rRate) ?? (detail.rates?.r?.rate || 0);
+                            const nrQty = detail.actualQuantity?.nr || 0;
+                            const rQty = detail.actualQuantity?.r || 0;
+                            executedSalesToday += (nrQty * nrRate) + (rQty * rRate);
+                        }
+
+                        // Target harian sales = budget / totalWorkDays
+                        const budget = da.spkId.budget || 0;
+                        const targetSalesHarian = totalWorkDays > 0 ? (budget / totalWorkDays) : 0;
+
+                        progressPercentage = targetSalesHarian > 0 ? (executedSalesToday / targetSalesHarian) * 100 : 0;
                         progressPercentage = Math.round(progressPercentage * 100) / 100;
                     }
 

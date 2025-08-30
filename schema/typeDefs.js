@@ -2147,6 +2147,28 @@ const typeDefs = gql`
   }
 
   # Dashboard Types
+  type MonthlySalesPerSPK {
+    spkId: ID!
+    spkNo: String
+    title: String
+    amount: Float!
+  }
+
+  type MonthlySalesActivityDetail {
+    dailyActivityId: ID!
+    date: String
+    spkId: ID!
+    spkNo: String
+    title: String
+    workItemId: ID!
+    workItemName: String
+    nrQty: Float
+    rQty: Float
+    nrRate: Float
+    rRate: Float
+    amount: Float!
+  }
+
   type MonthlySalesDetail {
     year: Int!
     month: Int!
@@ -2154,6 +2176,8 @@ const typeDefs = gql`
     totalSales: Float!
     spkCount: Int!
     amount: Float
+    perSpk: [MonthlySalesPerSPK!]!
+    activityDetails: [MonthlySalesActivityDetail!]!
   }
 
   type MonthlyCostDetail {
