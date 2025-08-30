@@ -1772,6 +1772,10 @@ const typeDefs = gql`
     unit: String!
     unitRate: Float!
     cost: Float!
+    # Metadata untuk audit
+    dailyActivityId: ID
+    date: String
+    createdAt: String
   }
 
   type ManpowerCostItem {
@@ -1780,6 +1784,10 @@ const typeDefs = gql`
     workingHours: Float!
     hourlyRate: Float!
     cost: Float!
+    # Metadata untuk audit
+    dailyActivityId: ID
+    date: String
+    createdAt: String
   }
 
   type EquipmentCostItem {
@@ -1790,11 +1798,19 @@ const typeDefs = gql`
     fuelUsed: Float!
     fuelPrice: Float!
     cost: Float!
+    # Metadata untuk audit
+    dailyActivityId: ID
+    date: String
+    createdAt: String
   }
 
   type OtherCostItem {
     description: String!
     cost: Float!
+    # Metadata untuk audit
+    dailyActivityId: ID
+    date: String
+    createdAt: String
   }
 
   type SPKDetailsWithProgress {

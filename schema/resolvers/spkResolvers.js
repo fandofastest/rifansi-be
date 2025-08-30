@@ -751,11 +751,15 @@ const Query = {
                         items: materialLogs.map(log => {
                             if (!log || !log.materialId) return null;
                             return {
+                                id: log._id?.toString() || '',
                                 material: log.materialId?.name || 'Unknown Material',
                                 quantity: log.quantity || 0,
                                 unit: log.materialId?.unitId?.name || '-',
                                 unitRate: log.materialId?.unitRate || 0,
-                                cost: log.quantity * (log.materialId?.unitRate || 0)
+                                cost: log.quantity * (log.materialId?.unitRate || 0),
+                                dailyActivityId: daId,
+                                date: da.date?.toISOString() || null,
+                                createdAt: log.createdAt?.toISOString?.() || null
                             };
                         }).filter(Boolean)
                     },
@@ -771,7 +775,10 @@ const Query = {
                                 numberOfWorkers: log.personCount || 0,
                                 workingHours: log.workingHours || 0,
                                 hourlyRate: log.hourlyRate || 0,
-                                cost: log.workingHours * log.personCount * log.hourlyRate
+                                cost: log.workingHours * log.personCount * log.hourlyRate,
+                                dailyActivityId: daId,
+                                date: da.date?.toISOString() || null,
+                                createdAt: log.createdAt?.toISOString?.() || null
                             };
                         }).filter(Boolean)
                     },
@@ -797,7 +804,10 @@ const Query = {
                                 rentalRatePerDay: log.rentalRatePerDay || 0,
                                 fuelUsed: (log.fuelIn - log.fuelRemaining) || 0,
                                 fuelPrice: log.fuelPrice || 0,
-                                cost: ((log.fuelIn - log.fuelRemaining) * log.fuelPrice) + (log.workingHour * log.hourlyRate)
+                                cost: ((log.fuelIn - log.fuelRemaining) * log.fuelPrice) + (log.workingHour * log.hourlyRate),
+                                dailyActivityId: daId,
+                                date: da.date?.toISOString() || null,
+                                createdAt: log.createdAt?.toISOString?.() || null
                             };
                         }).filter(Boolean)
                     },
@@ -810,7 +820,10 @@ const Query = {
                             if (!log) return null;
                             return {
                                 description: log.description || 'No Description',
-                                cost: log.amount || 0
+                                cost: log.amount || 0,
+                                dailyActivityId: daId,
+                                date: da.date?.toISOString() || null,
+                                createdAt: log.createdAt?.toISOString?.() || null
                             };
                         }).filter(Boolean)
                     }
