@@ -1320,7 +1320,8 @@ const Query = {
             budget: totalBudget,
             workItems: workItemsWithProgress,
             totalProgress: {
-                percentage: Math.round(overallProgressPercentage * 100) / 100,
+                // Sales-based progress percentage
+                percentage: totalBudget > 0 ? Math.round(((totalSales || 0) / totalBudget) * 10000) / 100 : 0,
                 totalTargetBOQ: totalTargetBOQ,
                 totalCompletedBOQ: totalCompletedBOQ,
                 remainingBOQ: remainingBOQ,
