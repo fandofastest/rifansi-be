@@ -974,7 +974,8 @@ const Query = {
             budget: spkObj.budget || 0,
             dailyActivities: formattedDailyActivities,
             totalProgress: {
-                percentage: Math.round(boqProgressPercentage * 100) / 100,
+                // Sales-based progress percentage instead of BOQ-based
+                percentage: (spkObj.budget || 0) > 0 ? Math.round(((totalSales || 0) / (spkObj.budget || 0)) * 10000) / 100 : 0,
                 totalTargetBOQ: totalTargetBOQ,
                 totalCompletedBOQ: totalCompletedBOQ,
                 remainingBOQ: remainingBOQ,
