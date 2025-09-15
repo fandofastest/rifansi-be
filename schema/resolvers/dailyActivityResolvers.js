@@ -507,14 +507,36 @@ const Query = {
                                     nr: { rate: 0, description: 'Non-remote rate' },
                                     r: { rate: 0, description: 'Remote rate' }
                                 };
-                                
+                                // Ambil rates langsung dari SPK berdasarkan workItemId
+                                let spkRates = defaultRates;
+                                try {
+                                    const wiIdStr = detail.workItemId?._id?.toString?.() || detail.workItemId?.toString?.() || '';
+                                    const wiArr = Array.isArray(da?.spkId?.workItems) ? da.spkId.workItems : [];
+                                    if (wiIdStr && wiArr.length > 0) {
+                                        const wiFromSpk = wiArr.find(wi => {
+                                            const id = wi.workItemId && (wi.workItemId._id || wi.workItemId);
+                                            return id && id.toString() === wiIdStr;
+                                        });
+                                        if (wiFromSpk && wiFromSpk.rates) {
+                                            const nrRate = wiFromSpk.rates?.nr?.rate || 0;
+                                            const rRate = wiFromSpk.rates?.r?.rate || 0;
+                                            spkRates = {
+                                                nr: { rate: nrRate, description: wiFromSpk.rates?.nr?.description },
+                                                r: { rate: rRate, description: wiFromSpk.rates?.r?.description }
+                                            };
+                                        }
+                                    }
+                                } catch (_) { /* noop */ }
+
                                 return {
                                     ...detail.toObject(),
+                                    // Override top-level rates to use SPK rates for consistency
+                                    rates: spkRates,
                                     workItem: detail.workItemId ? {
                                         ...detail.workItemId.toObject(),
                                         unit: detail.workItemId.unitId,
-                                        // Gunakan rates dari ActivityDetail jika ada, jika tidak, gunakan default rates
-                                        rates: detail.rates || defaultRates
+                                        // Gunakan rates dari SPK langsung
+                                        rates: spkRates
                                     } : null
                                 };
                             } catch (error) {
