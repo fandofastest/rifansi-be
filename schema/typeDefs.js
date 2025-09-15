@@ -2279,6 +2279,7 @@ const typeDefs = gql`
     totalCost: Float!
     totalBudget: Float!
     totalSpent: Float!
+    totalSales: Float!
     remainingBudget: Float!
     budgetUtilizationPercentage: Float!
     plannedVsActualCostRatio: Float!

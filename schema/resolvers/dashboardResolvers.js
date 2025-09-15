@@ -641,10 +641,12 @@ const dashboardResolvers = {
             activityCount: spkActivities.length,
             // New fields for enhanced financial metrics
             totalProgress: {
-              percentage: Math.round(workItemCompletionPercentage * 100) / 100,
+              // Sales-based percentage to align with spkWithProgressBySpkId
+              percentage: spkBudget > 0 ? Math.round((executedSalesAmount / spkBudget) * 10000) / 100 : 0,
               totalBudget: spkBudget,
               totalSpent: spkTotalActualCost,
               remainingBudget: spkRemainingBudget,
+              totalSales: executedSalesAmount,
               budgetUtilizationPercentage: Math.round(budgetUtilizationPercentage * 100) / 100,
               plannedVsActualCostRatio: Math.round(plannedVsActualCostRatio * 100) / 100,
               totalPlannedCost: spkTotalPlannedCost,

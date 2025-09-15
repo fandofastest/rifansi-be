@@ -895,28 +895,13 @@ const Query = {
             ])
         );
 
+        // Use SPK-local rates only
         const totalSales = (activityDetails || []).reduce((sum, detail) => {
             const qtyNr = detail.actualQuantity?.nr || 0;
             const qtyR = detail.actualQuantity?.r || 0;
-            const detailNrRate = detail.rates?.nr?.rate;
-            const detailRRate = detail.rates?.r?.rate;
-            const hasDetailRates = (typeof detailNrRate === 'number' && typeof detailRRate === 'number') &&
-                ((detailNrRate ?? 0) > 0 || (detailRRate ?? 0) > 0);
-
-            let nrRate = 0;
-            let rRate = 0;
-
-            if (hasDetailRates) {
-                nrRate = detailNrRate || 0;
-                rRate = detailRRate || 0;
-            } else {
-                const workItemId = String(detail.workItemId?._id || detail.workItemId || '');
-                const fallback = ratesByWorkItemId.get(workItemId) || { nr: 0, r: 0 };
-                nrRate = fallback.nr;
-                rRate = fallback.r;
-            }
-
-            return sum + (qtyNr * nrRate) + (qtyR * rRate);
+            const workItemId = String(detail.workItemId?._id || detail.workItemId || '');
+            const rate = ratesByWorkItemId.get(workItemId) || { nr: 0, r: 0 };
+            return sum + (qtyNr * rate.nr) + (qtyR * rate.r);
         }, 0);
 
         // Build per-day total sales details from ActivityDetails
@@ -929,22 +914,9 @@ const Query = {
             if (!daId) return;
             const qtyNr = detail.actualQuantity?.nr || 0;
             const qtyR = detail.actualQuantity?.r || 0;
-            const detailNrRate = detail.rates?.nr?.rate;
-            const detailRRate = detail.rates?.r?.rate;
-            const hasDetailRates = (typeof detailNrRate === 'number' && typeof detailRRate === 'number') &&
-                ((detailNrRate ?? 0) > 0 || (detailRRate ?? 0) > 0);
-            let nrRate = 0;
-            let rRate = 0;
-            if (hasDetailRates) {
-                nrRate = detailNrRate || 0;
-                rRate = detailRRate || 0;
-            } else {
-                const workItemId = String(detail.workItemId?._id || detail.workItemId || '');
-                const fb = ratesByWorkItemId.get(workItemId) || { nr: 0, r: 0 };
-                nrRate = fb.nr;
-                rRate = fb.r;
-            }
-            const lineTotal = (qtyNr * nrRate) + (qtyR * rRate);
+            const workItemId = String(detail.workItemId?._id || detail.workItemId || '');
+            const rate = ratesByWorkItemId.get(workItemId) || { nr: 0, r: 0 };
+            const lineTotal = (qtyNr * rate.nr) + (qtyR * rate.r);
             salesByDaily.set(daId, (salesByDaily.get(daId) || 0) + lineTotal);
         });
         const totalSalesDetails = Array.from(salesByDaily.entries())
@@ -1110,12 +1082,25 @@ const Query = {
 
         const totalActualCost = totalMaterialCost + totalManpowerCost + totalEquipmentCost + totalOtherCost;
 
-        // Calculate total sales across all activities using ActivityDetail's stored rates (primary)
+        // Build SPK-local rates map for consistent sales calculation
+        const ratesByWorkItemId2 = new Map(
+            (spk.workItems || []).map(item => [
+                String(item.workItemId?._id || item.workItemId || ''),
+                {
+                    nr: item.rates?.nr?.rate ?? 0,
+                    r: item.rates?.r?.rate ?? 0
+                }
+            ])
+        );
+
+        // Calculate total sales across all activities using SPK's workItems rates (as requested)
         const totalSales = (activityDetails || []).reduce((sum, detail) => {
             const qtyNr = detail.actualQuantity?.nr || 0;
             const qtyR = detail.actualQuantity?.r || 0;
-            const nrRate = detail.rates?.nr?.rate ?? 0;
-            const rRate = detail.rates?.r?.rate ?? 0;
+            const workItemIdStr = String(detail.workItemId?._id || detail.workItemId || '');
+            const rateObj = ratesByWorkItemId2.get(workItemIdStr) || { nr: 0, r: 0 };
+            const nrRate = rateObj.nr;
+            const rRate = rateObj.r;
             return sum + (qtyNr * nrRate) + (qtyR * rRate);
         }, 0);
 
@@ -1129,8 +1114,10 @@ const Query = {
             if (!daId) return;
             const qtyNr = detail.actualQuantity?.nr || 0;
             const qtyR = detail.actualQuantity?.r || 0;
-            const nrRate = detail.rates?.nr?.rate ?? 0;
-            const rRate = detail.rates?.r?.rate ?? 0;
+            const workItemIdStr = String(detail.workItemId?._id || detail.workItemId || '');
+            const rateObj = ratesByWorkItemId2.get(workItemIdStr) || { nr: 0, r: 0 };
+            const nrRate = rateObj.nr;
+            const rRate = rateObj.r;
             const lineTotal = (qtyNr * nrRate) + (qtyR * rRate);
             salesByDaily2.set(daId, (salesByDaily2.get(daId) || 0) + lineTotal);
         });
