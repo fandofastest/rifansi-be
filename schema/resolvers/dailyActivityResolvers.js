@@ -576,7 +576,9 @@ const Query = {
                                 try {
                                     const roleId = ml?.role?._id?.toString?.() || ml?.role?.toString?.();
                                     const workHours = ml?.workingHours || 0;
-                                    const dateObj = new Date(ml?.updatedAt || da.date || Date.now());
+                                    const baseDateVal_ml = da.date || ml?.updatedAt || Date.now();
+                                    const baseDate_ml = (typeof baseDateVal_ml === 'string' && /^\d+$/.test(baseDateVal_ml)) ? Number(baseDateVal_ml) : baseDateVal_ml;
+                                    const dateObj = new Date(baseDate_ml);
 
                                     // Fetch salary component for the role
                                     let salaryComponent = null;
@@ -588,13 +590,15 @@ const Query = {
                                     if (salaryComponent && workHours > 0) {
                                         // Determine day type (normal/weekend/holiday)
                                         const day = dateObj.getDay();
+                                        const isSunday = day === 0;
                                         const isWeekend = day === 0 || day === 6;
                                         const startOfDay = new Date(dateObj);
                                         startOfDay.setHours(0, 0, 0, 0);
                                         const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
-                                        const isHoliday = await Holiday.findOne({
+                                        const holidayDoc = await Holiday.findOne({
                                             date: { $gte: startOfDay, $lt: endOfDay }
                                         });
+                                        const isHoliday = !!holidayDoc || isSunday;
 
                                         let dayType = 'normal';
                                         if (isHoliday) dayType = 'libur';
@@ -1292,20 +1296,24 @@ const Mutation = {
                     try {
                         const roleId = log?.role?._id?.toString?.() || log?.role?.toString?.();
                         const workHours = log?.workingHours || 0;
-                        const dateObj = new Date(log?.updatedAt || dailyActivity.date || Date.now());
+                        const baseDateVal_log = dailyActivity.date || log?.updatedAt || Date.now();
+                        const baseDate_log = (typeof baseDateVal_log === 'string' && /^\d+$/.test(baseDateVal_log)) ? Number(baseDateVal_log) : baseDateVal_log;
+                        const dateObj = new Date(baseDate_log);
 
-                        let computedHourly = log.hourlyRate || 0;
+                        // Compute hourlyRate from manpowerHarian/8 using Sunday as holiday
                         if (roleId && workHours > 0) {
                             const salaryComponent = await SalaryComponent.findOne({ personnelRole: roleId });
                             if (salaryComponent) {
                                 const day = dateObj.getDay();
+                                const isSunday = day === 0;
                                 const isWeekend = day === 0 || day === 6;
                                 const startOfDay = new Date(dateObj);
                                 startOfDay.setHours(0, 0, 0, 0);
                                 const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
-                                const isHoliday = await Holiday.findOne({
+                                const holidayDoc = await Holiday.findOne({
                                     date: { $gte: startOfDay, $lt: endOfDay }
                                 });
+                                const isHoliday = !!holidayDoc || isSunday;
 
                                 let dayType = 'normal';
                                 if (isHoliday) dayType = 'libur';
@@ -1560,7 +1568,18 @@ const ManpowerLogResolvers = {
             // Otherwise, compute cost like getSalaryComponentDetailWithDate using updatedAt
             const roleId = parent?.role?._id?.toString?.() || parent?.role?.toString?.();
             const workHours = parent?.workingHours || 0;
-            const dateObj = new Date(parent?.updatedAt || Date.now());
+            const baseDateVal_parent = parent?.updatedAt || Date.now();
+            let dateObj = new Date((typeof baseDateVal_parent === 'string' && /^\d+$/.test(baseDateVal_parent)) ? Number(baseDateVal_parent) : baseDateVal_parent);
+            try {
+                if (parent?.dailyActivityId) {
+                    const da = await DailyActivity.findById(parent.dailyActivityId).select('date');
+                    if (da && da.date) {
+                        const baseDateVal_da = da.date;
+                        const baseDate_da = (typeof baseDateVal_da === 'string' && /^\d+$/.test(baseDateVal_da)) ? Number(baseDateVal_da) : baseDateVal_da;
+                        dateObj = new Date(baseDate_da);
+                    }
+                }
+            } catch (_) { /* ignore */ }
 
             if (!roleId || workHours <= 0) {
                 return parent.hourlyRate || 0;
@@ -1572,11 +1591,13 @@ const ManpowerLogResolvers = {
             }
 
             const day = dateObj.getDay();
+            const isSunday = day === 0;
             const isWeekend = day === 0 || day === 6;
             const startOfDay = new Date(dateObj);
             startOfDay.setHours(0, 0, 0, 0);
             const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
-            const isHoliday = await Holiday.findOne({ date: { $gte: startOfDay, $lt: endOfDay } });
+            const holidayDoc = await Holiday.findOne({ date: { $gte: startOfDay, $lt: endOfDay } });
+            const isHoliday = !!holidayDoc || isSunday;
 
             let dayType = 'normal';
             if (isHoliday) dayType = 'libur';
