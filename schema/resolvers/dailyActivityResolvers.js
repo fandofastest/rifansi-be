@@ -12,7 +12,10 @@ const {
     SPK,
     WorkItem,
     User,
-    FuelPrice
+    FuelPrice,
+    SalaryComponent,
+    OvertimeRate,
+    Holiday
 } = require('../../models');
 
 const {
@@ -566,7 +569,82 @@ const Query = {
                                 return null;
                             }
                         }).filter(Boolean),
-                        manpowerLogs: manpowerLogs.filter(Boolean),
+                        manpowerLogs: await (async () => {
+                            if (!Array.isArray(manpowerLogs)) return [];
+                            const logs = manpowerLogs.filter(Boolean);
+                            const enriched = await Promise.all(logs.map(async (ml) => {
+                                try {
+                                    const roleId = ml?.role?._id?.toString?.() || ml?.role?.toString?.();
+                                    const workHours = ml?.workingHours || 0;
+                                    const dateObj = new Date(ml?.updatedAt || da.date || Date.now());
+
+                                    // Fetch salary component for the role
+                                    let salaryComponent = null;
+                                    if (roleId) {
+                                        salaryComponent = await SalaryComponent.findOne({ personnelRole: roleId });
+                                    }
+
+                                    let costDetail = null;
+                                    if (salaryComponent && workHours > 0) {
+                                        // Determine day type (normal/weekend/holiday)
+                                        const day = dateObj.getDay();
+                                        const isWeekend = day === 0 || day === 6;
+                                        const startOfDay = new Date(dateObj);
+                                        startOfDay.setHours(0, 0, 0, 0);
+                                        const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
+                                        const isHoliday = await Holiday.findOne({
+                                            date: { $gte: startOfDay, $lt: endOfDay }
+                                        });
+
+                                        let dayType = 'normal';
+                                        if (isHoliday) dayType = 'libur';
+                                        else if (isWeekend) dayType = 'weekend';
+
+                                        // Overtime multiplier based on work hours and day type
+                                        const overtimeRate = await OvertimeRate.findOne({ waktuKerja: workHours });
+                                        if (overtimeRate) {
+                                            let overtimeMultiplier = 0;
+                                            if (dayType === 'normal') overtimeMultiplier = overtimeRate.normal;
+                                            else if (dayType === 'weekend') overtimeMultiplier = overtimeRate.weekend;
+                                            else if (dayType === 'libur') overtimeMultiplier = overtimeRate.libur;
+
+                                            const salaryDetail = salaryComponent.hitungKomponenGaji(dateObj);
+                                            const hourlyRate = (salaryComponent.gajiPokok || 0) / 173;
+                                            const upahLemburHarian = Math.round(hourlyRate * overtimeMultiplier);
+                                            const manpowerHarian = (salaryDetail.biayaMPTetapHarian || 0) + upahLemburHarian;
+
+                                            // Match the shape of SalaryComponentDetailWithDate
+                                            const { upahLemburHarian: ignoredUpah, biayaManpowerHarian, ...restSalaryDetail } = salaryDetail;
+                                            costDetail = {
+                                                ...restSalaryDetail,
+                                                isHoliday: !!isHoliday,
+                                                isWeekend,
+                                                dayType,
+                                                overtimeMultiplier,
+                                                workHours,
+                                                upahLemburHarian,
+                                                manpowerHarian
+                                            };
+                                        }
+                                    }
+
+                                    return {
+                                        id: ml._id,
+                                        dailyActivityId: ml.dailyActivityId,
+                                        role: roleId || ml.role,
+                                        personCount: ml.personCount,
+                                        hourlyRate: ml.hourlyRate,
+                                        workingHours: ml.workingHours,
+                                        personnelRole: ml.role,
+                                        cost: costDetail
+                                    };
+                                } catch (err) {
+                                    console.error('Error processing manpower log cost:', err);
+                                    return null;
+                                }
+                            }));
+                            return enriched.filter(Boolean);
+                        })(),
                         materialUsageLogs: materialUsageLogs.filter(Boolean),
                         otherCosts: otherCosts.filter(Boolean),
                         spkDetail: da.spkId,
@@ -1210,12 +1288,64 @@ const Mutation = {
                     isBrokenReported: log.isBrokenReported,
                     remarks: log.remarks
                 })),
-                manpowerLogs: manpowerLogs.map(log => ({
-                    id: log._id,
-                    dailyActivityId: log.dailyActivityId,
-                    role: log.role,
-                    personCount: log.personCount,
-                    hourlyRate: log.hourlyRate
+                manpowerLogs: await Promise.all(manpowerLogs.map(async (log) => {
+                    try {
+                        const roleId = log?.role?._id?.toString?.() || log?.role?.toString?.();
+                        const workHours = log?.workingHours || 0;
+                        const dateObj = new Date(log?.updatedAt || dailyActivity.date || Date.now());
+
+                        let computedHourly = log.hourlyRate || 0;
+                        if (roleId && workHours > 0) {
+                            const salaryComponent = await SalaryComponent.findOne({ personnelRole: roleId });
+                            if (salaryComponent) {
+                                const day = dateObj.getDay();
+                                const isWeekend = day === 0 || day === 6;
+                                const startOfDay = new Date(dateObj);
+                                startOfDay.setHours(0, 0, 0, 0);
+                                const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
+                                const isHoliday = await Holiday.findOne({
+                                    date: { $gte: startOfDay, $lt: endOfDay }
+                                });
+
+                                let dayType = 'normal';
+                                if (isHoliday) dayType = 'libur';
+                                else if (isWeekend) dayType = 'weekend';
+
+                                const overtimeRate = await OvertimeRate.findOne({ waktuKerja: workHours });
+                                if (overtimeRate) {
+                                    let overtimeMultiplier = 0;
+                                    if (dayType === 'normal') overtimeMultiplier = overtimeRate.normal;
+                                    else if (dayType === 'weekend') overtimeMultiplier = overtimeRate.weekend;
+                                    else if (dayType === 'libur') overtimeMultiplier = overtimeRate.libur;
+
+                                    const salaryDetail = salaryComponent.hitungKomponenGaji(dateObj);
+                                    const hourlyBase = (salaryComponent.gajiPokok || 0) / 173;
+                                    const upahLemburHarian = Math.round(hourlyBase * overtimeMultiplier);
+                                    const manpowerHarian = (salaryDetail.biayaMPTetapHarian || 0) + upahLemburHarian;
+                                    computedHourly = manpowerHarian / 8;
+                                }
+                            }
+                        }
+
+                        return {
+                            id: log._id,
+                            dailyActivityId: log.dailyActivityId,
+                            role: log.role,
+                            personCount: log.personCount,
+                            workingHours: log.workingHours,
+                            hourlyRate: computedHourly
+                        };
+                    } catch (e) {
+                        console.error('submitDailyReport manpower hourly compute error:', e);
+                        return {
+                            id: log._id,
+                            dailyActivityId: log.dailyActivityId,
+                            role: log.role,
+                            personCount: log.personCount,
+                            workingHours: log.workingHours,
+                            hourlyRate: log.hourlyRate || 0
+                        };
+                    }
                 })),
                 materialUsageLogs: materialUsageLogs.map(log => ({
                     id: log._id,
@@ -1420,7 +1550,59 @@ const ManpowerLogResolvers = {
         }
         return "default";
     },
-    hourlyRate: (parent) => parent.hourlyRate || 0,
+    hourlyRate: async (parent) => {
+        try {
+            // If cost already provided on parent, use it directly
+            if (parent.cost && typeof parent.cost.manpowerHarian === 'number') {
+                return (parent.cost.manpowerHarian || 0) / 8;
+            }
+
+            // Otherwise, compute cost like getSalaryComponentDetailWithDate using updatedAt
+            const roleId = parent?.role?._id?.toString?.() || parent?.role?.toString?.();
+            const workHours = parent?.workingHours || 0;
+            const dateObj = new Date(parent?.updatedAt || Date.now());
+
+            if (!roleId || workHours <= 0) {
+                return parent.hourlyRate || 0;
+            }
+
+            const salaryComponent = await SalaryComponent.findOne({ personnelRole: roleId });
+            if (!salaryComponent) {
+                return parent.hourlyRate || 0;
+            }
+
+            const day = dateObj.getDay();
+            const isWeekend = day === 0 || day === 6;
+            const startOfDay = new Date(dateObj);
+            startOfDay.setHours(0, 0, 0, 0);
+            const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
+            const isHoliday = await Holiday.findOne({ date: { $gte: startOfDay, $lt: endOfDay } });
+
+            let dayType = 'normal';
+            if (isHoliday) dayType = 'libur';
+            else if (isWeekend) dayType = 'weekend';
+
+            const overtimeRate = await OvertimeRate.findOne({ waktuKerja: workHours });
+            if (!overtimeRate) {
+                return parent.hourlyRate || 0;
+            }
+
+            let overtimeMultiplier = 0;
+            if (dayType === 'normal') overtimeMultiplier = overtimeRate.normal;
+            else if (dayType === 'weekend') overtimeMultiplier = overtimeRate.weekend;
+            else if (dayType === 'libur') overtimeMultiplier = overtimeRate.libur;
+
+            const salaryDetail = salaryComponent.hitungKomponenGaji(dateObj);
+            const hourlyBase = (salaryComponent.gajiPokok || 0) / 173;
+            const upahLemburHarian = Math.round(hourlyBase * overtimeMultiplier);
+            const manpowerHarian = (salaryDetail.biayaMPTetapHarian || 0) + upahLemburHarian;
+
+            return manpowerHarian / 8;
+        } catch (e) {
+            console.error('ManpowerLog.hourlyRate compute error:', e);
+            return parent.hourlyRate || 0;
+        }
+    },
     workingHours: (parent) => parent.workingHours || 0,
     dailyActivity: async (parent) => {
         if (!parent.dailyActivityId) return null;

@@ -346,6 +346,7 @@ const typeDefs = gql`
     workingHours: Float!
     dailyActivity: DailyActivity
     personnelRole: PersonnelRole
+    cost: SalaryComponentDetailWithDate
   }
 
   # MaterialUsageLog
