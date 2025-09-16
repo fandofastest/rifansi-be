@@ -1,11 +1,14 @@
 const { SPK, WorkItem, Area, Category, SubCategory, Unit } = require('../../models');
+const SalaryComponent = require('../../models/SalaryComponent');
+const OvertimeRate = require('../../models/OvertimeRate');
+const Holiday = require('../../models/Holiday');
+
 const { calculateProgressPercentage, calculateBOQProgressPercentage } = require('./helpers');
 const DailyActivity = require('../../models/DailyActivity');
 const MaterialUsageLog = require('../../models/MaterialUsageLog');
 const ManpowerLog = require('../../models/ManpowerLog');
 const EquipmentLog = require('../../models/EquipmentLog');
 const OtherCost = require('../../models/OtherCost');
-const PersonnelRole = require('../../models/PersonnelRole');
 const Equipment = require('../../models/Equipment');
 const ActivityDetail = require('../../models/ActivityDetail');
 
@@ -457,6 +460,57 @@ const Query = {
             select: 'roleName'
         }) || [];
 
+        // Build DA map for quick date lookup (for hourly computation)
+        const daMapLocal = new Map(dailyActivities.map(da => [da._id.toString(), da]));
+
+        // Helper to compute hourly from cost with Sunday = holiday, prefer DA date
+        async function computeHourlyFromCostLocal(log, daDate) {
+            try {
+                const workHours = log?.workingHours || 0;
+                if (workHours <= 0) return log.hourlyRate || 0;
+                const roleId = log?.role?._id?.toString?.() || log?.role?.toString?.();
+                if (!roleId) return log.hourlyRate || 0;
+                const sc = await SalaryComponent.findOne({ personnelRole: roleId });
+                if (!sc) return log.hourlyRate || 0;
+                const baseVal = daDate || log?.updatedAt || Date.now();
+                const base = (typeof baseVal === 'string' && /^\d+$/.test(baseVal)) ? Number(baseVal) : baseVal;
+                const dateObj = new Date(base);
+                const day = dateObj.getDay();
+                const isSunday = day === 0;
+                const isWeekend = day === 0 || day === 6;
+                const startOfDay = new Date(dateObj);
+                startOfDay.setHours(0, 0, 0, 0);
+                const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
+                const holidayDoc = await Holiday.findOne({ date: { $gte: startOfDay, $lt: endOfDay } });
+                const isHoliday = !!holidayDoc || isSunday;
+                let dayType = 'normal';
+                if (isHoliday) dayType = 'libur';
+                else if (isWeekend) dayType = 'weekend';
+                const ot = await OvertimeRate.findOne({ waktuKerja: workHours });
+                if (!ot) return log.hourlyRate || 0;
+                let multiplier = 0;
+                if (dayType === 'normal') multiplier = ot.normal;
+                else if (dayType === 'weekend') multiplier = ot.weekend;
+                else if (dayType === 'libur') multiplier = ot.libur;
+                const hourlyBase = (sc.gajiPokok || 0) / 173;
+                const upahLemburHarian = Math.round(hourlyBase * multiplier);
+                const salaryDetail = sc.hitungKomponenGaji(dateObj);
+                const manpowerHarian = (salaryDetail.biayaMPTetapHarian || 0) + upahLemburHarian;
+                const hr = manpowerHarian / 8;
+                return Number.isFinite(hr) ? hr : 0;
+            } catch (_) {
+                return log.hourlyRate || 0;
+            }
+        }
+
+        // Precompute hourly per manpower log for this resolver scope
+        const computedHourlyPairsLocal = await Promise.all((manpowerLogs || []).map(async (log) => {
+            const da = daMapLocal.get(log.dailyActivityId?.toString?.() || '');
+            const hr = await computeHourlyFromCostLocal(log, da?.date);
+            return [log._id?.toString?.() || '', Number.isFinite(hr) ? hr : 0];
+        }));
+        const computedHourlyByLogId = new Map(computedHourlyPairsLocal);
+
         const equipmentLogs = await EquipmentLog.find({
             dailyActivityId: { $in: dailyActivities.map(da => da._id) }
         }).populate({
@@ -766,19 +820,26 @@ const Query = {
                     manpower: {
                         totalCost: manpowerLogs.reduce((sum, log) => {
                             if (!log || !log.role) return sum;
-                            return sum + (log.workingHours * log.personCount * log.hourlyRate);
+                            const key = log._id?.toString?.() || '';
+                            const computedHourly = computedHourlyByLogId.get(key);
+                            const hourly = (typeof computedHourly === 'number' && !Number.isNaN(computedHourly)) ? computedHourly : (log.hourlyRate || 0);
+                            const line = (log.workingHours || 0) * (log.personCount || 0) * (hourly || 0);
+                            return sum + (Number.isFinite(line) ? line : 0);
                         }, 0),
                         items: manpowerLogs.map(log => {
                             if (!log || !log.role) return null;
+                            const key = log._id?.toString?.() || '';
+                            const computedHourly = computedHourlyByLogId.get(key);
+                            const hourly = (typeof computedHourly === 'number' && !Number.isNaN(computedHourly)) ? computedHourly : (log.hourlyRate || 0);
+                            const workingHours = log.workingHours || 0;
+                            const personCount = log.personCount || 0;
+                            const total = (workingHours * personCount * (hourly || 0)) || 0;
                             return {
                                 role: log.role?.roleName || 'Unknown Role',
-                                numberOfWorkers: log.personCount || 0,
-                                workingHours: log.workingHours || 0,
-                                hourlyRate: log.hourlyRate || 0,
-                                cost: log.workingHours * log.personCount * log.hourlyRate,
-                                dailyActivityId: daId,
-                                date: da.date?.toISOString() || null,
-                                createdAt: log.createdAt?.toISOString?.() || null
+                                numberOfWorkers: personCount,
+                                workingHours,
+                                hourlyRate: hourly,
+                                cost: total
                             };
                         }).filter(Boolean)
                     },
@@ -1019,6 +1080,56 @@ const Query = {
             path: 'role',
             select: 'roleName'
         }) || [];
+
+        // Build DA map for quick date lookup
+        const daMap = new Map(dailyActivities.map(da => [da._id.toString(), da]));
+
+        // Helper to compute hourly from cost with Sunday = holiday, prefer DA date
+        async function computeHourlyFromCost(log, daDate) {
+            try {
+                const workHours = log?.workingHours || 0;
+                if (workHours <= 0) return log.hourlyRate || 0;
+                const roleId = log?.role?._id?.toString?.() || log?.role?.toString?.();
+                if (!roleId) return log.hourlyRate || 0;
+                const sc = await SalaryComponent.findOne({ personnelRole: roleId });
+                if (!sc) return log.hourlyRate || 0;
+                const baseVal = daDate || log?.updatedAt || Date.now();
+                const base = (typeof baseVal === 'string' && /^\d+$/.test(baseVal)) ? Number(baseVal) : baseVal;
+                const dateObj = new Date(base);
+                const day = dateObj.getDay();
+                const isSunday = day === 0;
+                const isWeekend = day === 0 || day === 6;
+                const startOfDay = new Date(dateObj);
+                startOfDay.setHours(0, 0, 0, 0);
+                const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
+                const holidayDoc = await Holiday.findOne({ date: { $gte: startOfDay, $lt: endOfDay } });
+                const isHoliday = !!holidayDoc || isSunday;
+                let dayType = 'normal';
+                if (isHoliday) dayType = 'libur';
+                else if (isWeekend) dayType = 'weekend';
+                const ot = await OvertimeRate.findOne({ waktuKerja: workHours });
+                if (!ot) return log.hourlyRate || 0;
+                let multiplier = 0;
+                if (dayType === 'normal') multiplier = ot.normal;
+                else if (dayType === 'weekend') multiplier = ot.weekend;
+                else if (dayType === 'libur') multiplier = ot.libur;
+                const hourlyBase = (sc.gajiPokok || 0) / 173;
+                const upahLemburHarian = Math.round(hourlyBase * multiplier);
+                const salaryDetail = sc.hitungKomponenGaji(dateObj);
+                const manpowerHarian = (salaryDetail.biayaMPTetapHarian || 0) + upahLemburHarian;
+                return manpowerHarian / 8;
+            } catch (_) {
+                return log.hourlyRate || 0;
+            }
+        }
+
+        // Precompute computed hourly per manpower log
+        const computedHourlyEntries = await Promise.all((manpowerLogs || []).map(async (log) => {
+            const da = daMap.get(log.dailyActivityId?.toString?.() || '');
+            const hr = await computeHourlyFromCost(log, da?.date);
+            return [log._id?.toString?.() || '', hr];
+        }));
+        const computedHourlyByLogId = new Map(computedHourlyEntries);
 
         const equipmentLogs = await EquipmentLog.find({
             dailyActivityId: { $in: dailyActivities.map(da => da._id) }
