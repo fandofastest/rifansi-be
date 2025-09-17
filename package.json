@@ -5,7 +5,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "clean:orphan-daily": "node scripts/deleteOrphanDailyActivities.js",
+    "clean:orphan-daily:dry": "node scripts/deleteOrphanDailyActivities.js --dry-run"
   },
   "keywords": [],
   "author": "",
