@@ -1361,6 +1361,7 @@ const typeDefs = gql`
     role: ID!
     personCount: Int!
     hourlyRate: Float!
+    workingHours: Float!
   }
 
   input MaterialUsageLogInput {

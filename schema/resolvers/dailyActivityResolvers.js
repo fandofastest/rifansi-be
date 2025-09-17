@@ -1182,6 +1182,7 @@ const Mutation = {
                         role: log.role,
                         personCount: log.personCount,
                         hourlyRate: log.hourlyRate,
+                        workingHours: log.workingHours,
                         createdBy: user.userId
                     });
                     return manpowerLog.save();
@@ -1299,6 +1300,7 @@ const Mutation = {
                         const baseDateVal_log = dailyActivity.date || log?.updatedAt || Date.now();
                         const baseDate_log = (typeof baseDateVal_log === 'string' && /^\d+$/.test(baseDateVal_log)) ? Number(baseDateVal_log) : baseDateVal_log;
                         const dateObj = new Date(baseDate_log);
+                        let computedHourly = log.hourlyRate || 0;
 
                         // Compute hourlyRate from manpowerHarian/8 using Sunday as holiday
                         if (roleId && workHours > 0) {
@@ -1330,7 +1332,9 @@ const Mutation = {
                                     const hourlyBase = (salaryComponent.gajiPokok || 0) / 173;
                                     const upahLemburHarian = Math.round(hourlyBase * overtimeMultiplier);
                                     const manpowerHarian = (salaryDetail.biayaMPTetapHarian || 0) + upahLemburHarian;
-                                    computedHourly = manpowerHarian / 8;
+                                    // Derive hourly from total daily manpower cost divided by actual working hours from client input
+                                    const divisor = (workHours && workHours > 0) ? workHours : 8;
+                                    computedHourly = manpowerHarian / divisor;
                                 }
                             }
                         }
@@ -1562,7 +1566,9 @@ const ManpowerLogResolvers = {
         try {
             // If cost already provided on parent, use it directly
             if (parent.cost && typeof parent.cost.manpowerHarian === 'number') {
-                return (parent.cost.manpowerHarian || 0) / 8;
+                const wh = parent?.workingHours || 0;
+                const divisor = wh > 0 ? wh : 8;
+                return (parent.cost.manpowerHarian || 0) / divisor;
             }
 
             // Otherwise, compute cost like getSalaryComponentDetailWithDate using updatedAt
@@ -1618,7 +1624,8 @@ const ManpowerLogResolvers = {
             const upahLemburHarian = Math.round(hourlyBase * overtimeMultiplier);
             const manpowerHarian = (salaryDetail.biayaMPTetapHarian || 0) + upahLemburHarian;
 
-            return manpowerHarian / 8;
+            const divisor = workHours > 0 ? workHours : 8;
+            return manpowerHarian / divisor;
         } catch (e) {
             console.error('ManpowerLog.hourlyRate compute error:', e);
             return parent.hourlyRate || 0;
