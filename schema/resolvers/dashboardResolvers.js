@@ -6,6 +6,9 @@ const Contract = require('../../models/Contract');
 const ActivityDetail = require('../../models/ActivityDetail');
 const MaterialUsageLog = require('../../models/MaterialUsageLog');
 const ManpowerLog = require('../../models/ManpowerLog');
+const SalaryComponent = require('../../models/SalaryComponent');
+const OvertimeRate = require('../../models/OvertimeRate');
+const Holiday = require('../../models/Holiday');
 const EquipmentLog = require('../../models/EquipmentLog');
 const OtherCost = require('../../models/OtherCost');
 const BorrowPit = require('../../models/BorrowPit');
@@ -196,7 +199,54 @@ const dashboardResolvers = {
           monthlyData[key].costBreakdown.material += cost;
         });
         
-        manpowerLogs.forEach(log => {
+        // Helper to compute hourly rate (manpowerHarian/8) with Sunday treated as holiday
+        async function computeHourlyFromCost(log, daDate) {
+          try {
+            const workHours = log?.workingHours || 0;
+            if (workHours <= 0) return log.hourlyRate || 0;
+            const roleId = log?.role?._id?.toString?.() || log?.role?.toString?.();
+            if (!roleId) return log.hourlyRate || 0;
+
+            const sc = await SalaryComponent.findOne({ personnelRole: roleId });
+            if (!sc) return log.hourlyRate || 0;
+
+            // Prefer activity date over updatedAt
+            const baseVal = daDate || log?.updatedAt || Date.now();
+            const base = (typeof baseVal === 'string' && /^\d+$/.test(baseVal)) ? Number(baseVal) : baseVal;
+            const dateObj = new Date(base);
+
+            const day = dateObj.getDay();
+            const isSunday = day === 0;
+            const isWeekend = day === 0 || day === 6;
+            const startOfDay = new Date(dateObj);
+            startOfDay.setHours(0, 0, 0, 0);
+            const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
+            const holidayDoc = await Holiday.findOne({ date: { $gte: startOfDay, $lt: endOfDay } });
+            const isHoliday = !!holidayDoc || isSunday;
+
+            let dayType = 'normal';
+            if (isHoliday) dayType = 'libur';
+            else if (isWeekend) dayType = 'weekend';
+
+            const ot = await OvertimeRate.findOne({ waktuKerja: workHours });
+            if (!ot) return log.hourlyRate || 0;
+
+            let multiplier = 0;
+            if (dayType === 'normal') multiplier = ot.normal;
+            else if (dayType === 'weekend') multiplier = ot.weekend;
+            else if (dayType === 'libur') multiplier = ot.libur;
+
+            const hourlyBase = (sc.gajiPokok || 0) / 173;
+            const upahLemburHarian = Math.round(hourlyBase * multiplier);
+            const salaryDetail = sc.hitungKomponenGaji(dateObj);
+            const manpowerHarian = (salaryDetail.biayaMPTetapHarian || 0) + upahLemburHarian;
+            return manpowerHarian / 8;
+          } catch (_) {
+            return log.hourlyRate || 0;
+          }
+        }
+
+        for (const log of manpowerLogs) {
           const dailyActivity = dailyActivities.find(da => da._id.toString() === log.dailyActivityId.toString());
           if (!dailyActivity) return;
           // Skip if SPK doesn't have spkNo (cacad)
@@ -208,10 +258,11 @@ const dashboardResolvers = {
           const month = dailyActivity.date.getMonth() + 1;
           const key = ensureMonthlyEntry(year, month);
           
-          const cost = (log.personCount || 0) * (log.workingHours || 0) * (log.hourlyRate || 0);
+          const computedHourly = await computeHourlyFromCost(log, dailyActivity.date);
+          const cost = (log.personCount || 0) * (log.workingHours || 0) * computedHourly;
           monthlyData[key].cost += cost;
           monthlyData[key].costBreakdown.manpower += cost;
-        });
+        }
         
         equipmentLogs.forEach(log => {
           const dailyActivity = dailyActivities.find(da => da._id.toString() === log.dailyActivityId.toString());
@@ -548,8 +599,11 @@ const dashboardResolvers = {
             : 0;
 
           const spkManpowerCost = spk.spkNo
-            ? spkManpowerLogs.reduce((total, log) => 
-                total + ((log.personCount || 0) * (log.workingHours || 0) * (log.hourlyRate || 0)), 0)
+            ? (await Promise.all(spkManpowerLogs.map(async (log) => {
+                const da = daMap.get(log.dailyActivityId.toString());
+                const computedHourly = await computeHourlyFromCost(log, da?.date);
+                return (log.personCount || 0) * (log.workingHours || 0) * computedHourly;
+              }))).reduce((a, b) => a + b, 0)
             : 0;
 
           const spkEquipmentCost = spk.spkNo
@@ -641,10 +695,12 @@ const dashboardResolvers = {
             activityCount: spkActivities.length,
             // New fields for enhanced financial metrics
             totalProgress: {
-              percentage: Math.round(workItemCompletionPercentage * 100) / 100,
+              // Sales-based percentage to align with spkWithProgressBySpkId
+              percentage: spkBudget > 0 ? Math.round((executedSalesAmount / spkBudget) * 10000) / 100 : 0,
               totalBudget: spkBudget,
               totalSpent: spkTotalActualCost,
               remainingBudget: spkRemainingBudget,
+              totalSales: executedSalesAmount,
               budgetUtilizationPercentage: Math.round(budgetUtilizationPercentage * 100) / 100,
               plannedVsActualCostRatio: Math.round(plannedVsActualCostRatio * 100) / 100,
               totalPlannedCost: spkTotalPlannedCost,
@@ -676,14 +732,19 @@ const dashboardResolvers = {
           return hasSpkNo;
         });
 
-        const totalManpowerCost = validManpowerLogs.reduce((total, log) => 
-          total + ((log.personCount || 0) * (log.workingHours || 0) * (log.hourlyRate || 0)), 0);
+        const totalManpowerCost = (await Promise.all(validManpowerLogs.map(async (log) => {
+          const daId = log.dailyActivityId ? log.dailyActivityId.toString() : null;
+          const da = daId ? daMap.get(daId) : null;
+          const computedHourly = await computeHourlyFromCost(log, da?.date);
+          return (log.personCount || 0) * (log.workingHours || 0) * computedHourly;
+        }))).reduce((a, b) => a + b, 0);
 
         // Debug: Tampilkan rincian biaya manpower per log dan totalnya
         try {
           console.log('[ManpowerCost Breakdown]');
           validManpowerLogs.forEach((log, idx) => {
             const personCount = log.personCount || 0;
+            const computedHourly = 0; // to keep logging lightweight; can compute if needed
             const hourlyRate = log.hourlyRate || 0;
             const workingHours = log.workingHours || 0;
             const lineTotal = personCount * hourlyRate * workingHours;

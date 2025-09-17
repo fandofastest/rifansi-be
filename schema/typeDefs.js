@@ -346,6 +346,7 @@ const typeDefs = gql`
     workingHours: Float!
     dailyActivity: DailyActivity
     personnelRole: PersonnelRole
+    cost: SalaryComponentDetailWithDate
   }
 
   # MaterialUsageLog
@@ -1360,6 +1361,7 @@ const typeDefs = gql`
     role: ID!
     personCount: Int!
     hourlyRate: Float!
+    workingHours: Float!
   }
 
   input MaterialUsageLogInput {
@@ -2279,6 +2281,7 @@ const typeDefs = gql`
     totalCost: Float!
     totalBudget: Float!
     totalSpent: Float!
+    totalSales: Float!
     remainingBudget: Float!
     budgetUtilizationPercentage: Float!
     plannedVsActualCostRatio: Float!

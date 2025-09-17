@@ -1,11 +1,14 @@
 const { SPK, WorkItem, Area, Category, SubCategory, Unit } = require('../../models');
+const SalaryComponent = require('../../models/SalaryComponent');
+const OvertimeRate = require('../../models/OvertimeRate');
+const Holiday = require('../../models/Holiday');
+
 const { calculateProgressPercentage, calculateBOQProgressPercentage } = require('./helpers');
 const DailyActivity = require('../../models/DailyActivity');
 const MaterialUsageLog = require('../../models/MaterialUsageLog');
 const ManpowerLog = require('../../models/ManpowerLog');
 const EquipmentLog = require('../../models/EquipmentLog');
 const OtherCost = require('../../models/OtherCost');
-const PersonnelRole = require('../../models/PersonnelRole');
 const Equipment = require('../../models/Equipment');
 const ActivityDetail = require('../../models/ActivityDetail');
 
@@ -457,6 +460,57 @@ const Query = {
             select: 'roleName'
         }) || [];
 
+        // Build DA map for quick date lookup (for hourly computation)
+        const daMapLocal = new Map(dailyActivities.map(da => [da._id.toString(), da]));
+
+        // Helper to compute hourly from cost with Sunday = holiday, prefer DA date
+        async function computeHourlyFromCostLocal(log, daDate) {
+            try {
+                const workHours = log?.workingHours || 0;
+                if (workHours <= 0) return log.hourlyRate || 0;
+                const roleId = log?.role?._id?.toString?.() || log?.role?.toString?.();
+                if (!roleId) return log.hourlyRate || 0;
+                const sc = await SalaryComponent.findOne({ personnelRole: roleId });
+                if (!sc) return log.hourlyRate || 0;
+                const baseVal = daDate || log?.updatedAt || Date.now();
+                const base = (typeof baseVal === 'string' && /^\d+$/.test(baseVal)) ? Number(baseVal) : baseVal;
+                const dateObj = new Date(base);
+                const day = dateObj.getDay();
+                const isSunday = day === 0;
+                const isWeekend = day === 0 || day === 6;
+                const startOfDay = new Date(dateObj);
+                startOfDay.setHours(0, 0, 0, 0);
+                const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
+                const holidayDoc = await Holiday.findOne({ date: { $gte: startOfDay, $lt: endOfDay } });
+                const isHoliday = !!holidayDoc || isSunday;
+                let dayType = 'normal';
+                if (isHoliday) dayType = 'libur';
+                else if (isWeekend) dayType = 'weekend';
+                const ot = await OvertimeRate.findOne({ waktuKerja: workHours });
+                if (!ot) return log.hourlyRate || 0;
+                let multiplier = 0;
+                if (dayType === 'normal') multiplier = ot.normal;
+                else if (dayType === 'weekend') multiplier = ot.weekend;
+                else if (dayType === 'libur') multiplier = ot.libur;
+                const hourlyBase = (sc.gajiPokok || 0) / 173;
+                const upahLemburHarian = Math.round(hourlyBase * multiplier);
+                const salaryDetail = sc.hitungKomponenGaji(dateObj);
+                const manpowerHarian = (salaryDetail.biayaMPTetapHarian || 0) + upahLemburHarian;
+                const hr = manpowerHarian / 8;
+                return Number.isFinite(hr) ? hr : 0;
+            } catch (_) {
+                return log.hourlyRate || 0;
+            }
+        }
+
+        // Precompute hourly per manpower log for this resolver scope
+        const computedHourlyPairsLocal = await Promise.all((manpowerLogs || []).map(async (log) => {
+            const da = daMapLocal.get(log.dailyActivityId?.toString?.() || '');
+            const hr = await computeHourlyFromCostLocal(log, da?.date);
+            return [log._id?.toString?.() || '', Number.isFinite(hr) ? hr : 0];
+        }));
+        const computedHourlyByLogId = new Map(computedHourlyPairsLocal);
+
         const equipmentLogs = await EquipmentLog.find({
             dailyActivityId: { $in: dailyActivities.map(da => da._id) }
         }).populate({
@@ -766,19 +820,26 @@ const Query = {
                     manpower: {
                         totalCost: manpowerLogs.reduce((sum, log) => {
                             if (!log || !log.role) return sum;
-                            return sum + (log.workingHours * log.personCount * log.hourlyRate);
+                            const key = log._id?.toString?.() || '';
+                            const computedHourly = computedHourlyByLogId.get(key);
+                            const hourly = (typeof computedHourly === 'number' && !Number.isNaN(computedHourly)) ? computedHourly : (log.hourlyRate || 0);
+                            const line = (log.workingHours || 0) * (log.personCount || 0) * (hourly || 0);
+                            return sum + (Number.isFinite(line) ? line : 0);
                         }, 0),
                         items: manpowerLogs.map(log => {
                             if (!log || !log.role) return null;
+                            const key = log._id?.toString?.() || '';
+                            const computedHourly = computedHourlyByLogId.get(key);
+                            const hourly = (typeof computedHourly === 'number' && !Number.isNaN(computedHourly)) ? computedHourly : (log.hourlyRate || 0);
+                            const workingHours = log.workingHours || 0;
+                            const personCount = log.personCount || 0;
+                            const total = (workingHours * personCount * (hourly || 0)) || 0;
                             return {
                                 role: log.role?.roleName || 'Unknown Role',
-                                numberOfWorkers: log.personCount || 0,
-                                workingHours: log.workingHours || 0,
-                                hourlyRate: log.hourlyRate || 0,
-                                cost: log.workingHours * log.personCount * log.hourlyRate,
-                                dailyActivityId: daId,
-                                date: da.date?.toISOString() || null,
-                                createdAt: log.createdAt?.toISOString?.() || null
+                                numberOfWorkers: personCount,
+                                workingHours,
+                                hourlyRate: hourly,
+                                cost: total
                             };
                         }).filter(Boolean)
                     },
@@ -895,28 +956,13 @@ const Query = {
             ])
         );
 
+        // Use SPK-local rates only
         const totalSales = (activityDetails || []).reduce((sum, detail) => {
             const qtyNr = detail.actualQuantity?.nr || 0;
             const qtyR = detail.actualQuantity?.r || 0;
-            const detailNrRate = detail.rates?.nr?.rate;
-            const detailRRate = detail.rates?.r?.rate;
-            const hasDetailRates = (typeof detailNrRate === 'number' && typeof detailRRate === 'number') &&
-                ((detailNrRate ?? 0) > 0 || (detailRRate ?? 0) > 0);
-
-            let nrRate = 0;
-            let rRate = 0;
-
-            if (hasDetailRates) {
-                nrRate = detailNrRate || 0;
-                rRate = detailRRate || 0;
-            } else {
-                const workItemId = String(detail.workItemId?._id || detail.workItemId || '');
-                const fallback = ratesByWorkItemId.get(workItemId) || { nr: 0, r: 0 };
-                nrRate = fallback.nr;
-                rRate = fallback.r;
-            }
-
-            return sum + (qtyNr * nrRate) + (qtyR * rRate);
+            const workItemId = String(detail.workItemId?._id || detail.workItemId || '');
+            const rate = ratesByWorkItemId.get(workItemId) || { nr: 0, r: 0 };
+            return sum + (qtyNr * rate.nr) + (qtyR * rate.r);
         }, 0);
 
         // Build per-day total sales details from ActivityDetails
@@ -929,22 +975,9 @@ const Query = {
             if (!daId) return;
             const qtyNr = detail.actualQuantity?.nr || 0;
             const qtyR = detail.actualQuantity?.r || 0;
-            const detailNrRate = detail.rates?.nr?.rate;
-            const detailRRate = detail.rates?.r?.rate;
-            const hasDetailRates = (typeof detailNrRate === 'number' && typeof detailRRate === 'number') &&
-                ((detailNrRate ?? 0) > 0 || (detailRRate ?? 0) > 0);
-            let nrRate = 0;
-            let rRate = 0;
-            if (hasDetailRates) {
-                nrRate = detailNrRate || 0;
-                rRate = detailRRate || 0;
-            } else {
-                const workItemId = String(detail.workItemId?._id || detail.workItemId || '');
-                const fb = ratesByWorkItemId.get(workItemId) || { nr: 0, r: 0 };
-                nrRate = fb.nr;
-                rRate = fb.r;
-            }
-            const lineTotal = (qtyNr * nrRate) + (qtyR * rRate);
+            const workItemId = String(detail.workItemId?._id || detail.workItemId || '');
+            const rate = ratesByWorkItemId.get(workItemId) || { nr: 0, r: 0 };
+            const lineTotal = (qtyNr * rate.nr) + (qtyR * rate.r);
             salesByDaily.set(daId, (salesByDaily.get(daId) || 0) + lineTotal);
         });
         const totalSalesDetails = Array.from(salesByDaily.entries())
@@ -1048,6 +1081,56 @@ const Query = {
             select: 'roleName'
         }) || [];
 
+        // Build DA map for quick date lookup
+        const daMap = new Map(dailyActivities.map(da => [da._id.toString(), da]));
+
+        // Helper to compute hourly from cost with Sunday = holiday, prefer DA date
+        async function computeHourlyFromCost(log, daDate) {
+            try {
+                const workHours = log?.workingHours || 0;
+                if (workHours <= 0) return log.hourlyRate || 0;
+                const roleId = log?.role?._id?.toString?.() || log?.role?.toString?.();
+                if (!roleId) return log.hourlyRate || 0;
+                const sc = await SalaryComponent.findOne({ personnelRole: roleId });
+                if (!sc) return log.hourlyRate || 0;
+                const baseVal = daDate || log?.updatedAt || Date.now();
+                const base = (typeof baseVal === 'string' && /^\d+$/.test(baseVal)) ? Number(baseVal) : baseVal;
+                const dateObj = new Date(base);
+                const day = dateObj.getDay();
+                const isSunday = day === 0;
+                const isWeekend = day === 0 || day === 6;
+                const startOfDay = new Date(dateObj);
+                startOfDay.setHours(0, 0, 0, 0);
+                const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
+                const holidayDoc = await Holiday.findOne({ date: { $gte: startOfDay, $lt: endOfDay } });
+                const isHoliday = !!holidayDoc || isSunday;
+                let dayType = 'normal';
+                if (isHoliday) dayType = 'libur';
+                else if (isWeekend) dayType = 'weekend';
+                const ot = await OvertimeRate.findOne({ waktuKerja: workHours });
+                if (!ot) return log.hourlyRate || 0;
+                let multiplier = 0;
+                if (dayType === 'normal') multiplier = ot.normal;
+                else if (dayType === 'weekend') multiplier = ot.weekend;
+                else if (dayType === 'libur') multiplier = ot.libur;
+                const hourlyBase = (sc.gajiPokok || 0) / 173;
+                const upahLemburHarian = Math.round(hourlyBase * multiplier);
+                const salaryDetail = sc.hitungKomponenGaji(dateObj);
+                const manpowerHarian = (salaryDetail.biayaMPTetapHarian || 0) + upahLemburHarian;
+                return manpowerHarian / 8;
+            } catch (_) {
+                return log.hourlyRate || 0;
+            }
+        }
+
+        // Precompute computed hourly per manpower log
+        const computedHourlyEntries = await Promise.all((manpowerLogs || []).map(async (log) => {
+            const da = daMap.get(log.dailyActivityId?.toString?.() || '');
+            const hr = await computeHourlyFromCost(log, da?.date);
+            return [log._id?.toString?.() || '', hr];
+        }));
+        const computedHourlyByLogId = new Map(computedHourlyEntries);
+
         const equipmentLogs = await EquipmentLog.find({
             dailyActivityId: { $in: dailyActivities.map(da => da._id) }
         }).populate({
@@ -1110,12 +1193,25 @@ const Query = {
 
         const totalActualCost = totalMaterialCost + totalManpowerCost + totalEquipmentCost + totalOtherCost;
 
-        // Calculate total sales across all activities using ActivityDetail's stored rates (primary)
+        // Build SPK-local rates map for consistent sales calculation
+        const ratesByWorkItemId2 = new Map(
+            (spk.workItems || []).map(item => [
+                String(item.workItemId?._id || item.workItemId || ''),
+                {
+                    nr: item.rates?.nr?.rate ?? 0,
+                    r: item.rates?.r?.rate ?? 0
+                }
+            ])
+        );
+
+        // Calculate total sales across all activities using SPK's workItems rates (as requested)
         const totalSales = (activityDetails || []).reduce((sum, detail) => {
             const qtyNr = detail.actualQuantity?.nr || 0;
             const qtyR = detail.actualQuantity?.r || 0;
-            const nrRate = detail.rates?.nr?.rate ?? 0;
-            const rRate = detail.rates?.r?.rate ?? 0;
+            const workItemIdStr = String(detail.workItemId?._id || detail.workItemId || '');
+            const rateObj = ratesByWorkItemId2.get(workItemIdStr) || { nr: 0, r: 0 };
+            const nrRate = rateObj.nr;
+            const rRate = rateObj.r;
             return sum + (qtyNr * nrRate) + (qtyR * rRate);
         }, 0);
 
@@ -1129,8 +1225,10 @@ const Query = {
             if (!daId) return;
             const qtyNr = detail.actualQuantity?.nr || 0;
             const qtyR = detail.actualQuantity?.r || 0;
-            const nrRate = detail.rates?.nr?.rate ?? 0;
-            const rRate = detail.rates?.r?.rate ?? 0;
+            const workItemIdStr = String(detail.workItemId?._id || detail.workItemId || '');
+            const rateObj = ratesByWorkItemId2.get(workItemIdStr) || { nr: 0, r: 0 };
+            const nrRate = rateObj.nr;
+            const rRate = rateObj.r;
             const lineTotal = (qtyNr * nrRate) + (qtyR * rRate);
             salesByDaily2.set(daId, (salesByDaily2.get(daId) || 0) + lineTotal);
         });

@@ -37,14 +37,18 @@ const Query = {
             }
 
             const dateObj = new Date(date);
-            const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
+            const dayOfWeek = dateObj.getDay();
+            const isSunday = dayOfWeek === 0;
+            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
-            const isHoliday = await Holiday.findOne({
+            const holidayDoc = await Holiday.findOne({
                 date: {
                     $gte: new Date(dateObj.setHours(0, 0, 0, 0)),
                     $lt: new Date(dateObj.getTime() + 24 * 60 * 60 * 1000)
                 }
             });
+            // Treat all Sundays as holidays
+            const isHoliday = !!holidayDoc || isSunday;
 
             let dayType = 'normal';
             if (isHoliday) dayType = 'libur';
