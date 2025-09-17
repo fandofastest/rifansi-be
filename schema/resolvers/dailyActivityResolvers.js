@@ -617,6 +617,12 @@ const Query = {
                                             const upahLemburHarian = Math.round(hourlyRate * overtimeMultiplier);
                                             const manpowerHarian = (salaryDetail.biayaMPTetapHarian || 0) + upahLemburHarian;
 
+                                            // Hitung ringkasan biaya berdasarkan jumlah pekerja (personCount)
+                                            const jumlahPekerja = Number(ml?.personCount || 0);
+                                            const upahHarianDasar = (salaryDetail.biayaMPTetapHarian || 0) * jumlahPekerja;
+                                            const upahLembur = upahLemburHarian * jumlahPekerja;
+                                            const totalUpah = upahHarianDasar + upahLembur;
+
                                             // Match the shape of SalaryComponentDetailWithDate
                                             const { upahLemburHarian: ignoredUpah, biayaManpowerHarian, ...restSalaryDetail } = salaryDetail;
                                             costDetail = {
@@ -627,7 +633,10 @@ const Query = {
                                                 overtimeMultiplier,
                                                 workHours,
                                                 upahLemburHarian,
-                                                manpowerHarian
+                                                manpowerHarian,
+                                                upahHarianDasar,
+                                                upahLembur,
+                                                totalUpah
                                             };
                                         }
                                     }

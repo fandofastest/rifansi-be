@@ -1615,6 +1615,13 @@ const typeDefs = gql`
     dayType: String
     overtimeMultiplier: Float
     workHours: Int
+    # Ringkasan biaya tenaga kerja per log (memperhitungkan personCount)
+    # upahHarianDasar = biayaMPTetapHarian * personCount
+    # upahLembur = upahLemburHarian * personCount
+    # totalUpah = upahHarianDasar + upahLembur
+    upahHarianDasar: Float
+    upahLembur: Float
+    totalUpah: Float
   }
 
   # BOQ Volume Types
